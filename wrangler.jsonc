@@ -1,0 +1,23 @@
+{
+	"compatibility_date": "2026-04-17",
+	"compatibility_flags": [
+		"global_fetch_strictly_public"
+	],
+	"name": "my-anime-site",
+	"main": "@astrojs/cloudflare/entrypoints/server",
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS"
+	},
+	"observability": {
+		"enabled": true
+	},
+	// --- 这里的代码是新加的 ---
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "anime_db",
+			"database_id": "c6606a46-3188-473b-a5ba-dcff28dee124"
+		}
+	]
+}

@@ -1,17 +1,37 @@
 ---
+// 1. 导入 Cloudflare 的 env 模块
+import { env } from "cloudflare:workers";
 
+// 2. 直接从 env 中获取你的 D1 数据库绑定（DB 是你在 wrangler.jsonc 中定义的 binding 名）
+const db = env.DB;
+
+// 3. 执行查询（逻辑保持不变）
+const { results } = await db.prepare("SELECT * FROM anime ORDER BY id DESC").all();
 ---
 
-<html lang="en">
-	<head>
-		<meta charset="utf-8" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<link rel="icon" href="/favicon.ico" />
-		<meta name="viewport" content="width=device-width" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro</title>
-	</head>
-	<body>
-		<h1>Astro</h1>
-	</body>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <title>我的追番评价站</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #f4f4f9; }
+        .anime-card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .score { color: #ff9900; font-weight: bold; font-size: 1.2rem; }
+        .status { background: #eee; padding: 2px 8px; border-radius: 4px; font-size: 0.9rem; }
+    </style>
+</head>
+<body>
+    <h1>我的追番列表 📺</h1>
+    
+    <div class="list">
+        {results.map((anime) => (
+            <div class="anime-card">
+                {anime.image_url && <img src={anime.image_url} alt={anime.title} style="width: 100%; border-radius: 8px; margin-bottom: 10px;" />}
+                <h2>{anime.title} <span class="status">{anime.status}</span></h2>
+                <p class="score">评分：{anime.score} / 10</p>
+                <p><strong>我的评价：</strong>{anime.review}</p>
+        </div>
+    ))}
+    </div>
+</body>
 </html>
