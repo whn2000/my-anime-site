@@ -2,62 +2,131 @@
 import { env } from "cloudflare:workers";
 
 let message = "";
+const db = env.DB;
 
-// 处理表单提交
+// 处理 POST 请求
 if (Astro.request.method === "POST") {
   try {
     const data = await Astro.request.formData();
-    const title = data.get("title");
-    const score = data.get("score");
-    const status = data.get("status");
-    const review = data.get("review");
-    const image_url = data.get("image_url");
+    const action = data.get("action");
 
-    const db = env.DB;
-    
-    // 执行插入语句
-    await db.prepare(
-      "INSERT INTO anime (title, score, status, review, image_url) VALUES (?, ?, ?, ?, ?)"
-    ).bind(title, score, status, review, image_url).run();
+    if (action === "add") {
+      const title = data.get("title");
+      const score = data.get("score");
+      const bgm_score = data.get("bgm_score");
+      const status = data.get("status");
+      const review = data.get("review");
+      const image_url = data.get("image_url");
 
-    message = "✅ 添加成功！";
+      await db.prepare(
+        "INSERT INTO anime (title, score, bgm_score, status, review, image_url) VALUES (?, ?, ?, ?, ?, ?)"
+      ).bind(title, score, bgm_score, status, review, image_url).run();
+      message = "✅ 发布成功！数据已存入 D1";
+    } 
+    else if (action === "delete") {
+      const id = data.get("id");
+      await db.prepare("DELETE FROM anime WHERE id = ?").bind(id).run();
+      message = "🗑️ 记录已删除";
+    }
   } catch (e) {
-    message = "❌ 出错了：" + e.message;
+    message = "❌ 错误：" + e.message;
   }
 }
+
+// 获取现有列表
+const { results: animeList } = await db.prepare("SELECT id, title FROM anime ORDER BY id DESC").all();
 ---
 
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8" />
-    <title>后台管理 - 追番站</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>后台管理 - AnimeTracker</title>
     <style>
-        body { font-family: sans-serif; max-width: 500px; margin: 40px auto; padding: 20px; line-height: 1.6; }
-        form { display: flex; flex-direction: column; gap: 15px; background: #fff; padding: 20px; border-radius: 8px; border: 1px solid #ddd; }
-        input, textarea, select { padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
-        button { background: #0070f3; color: white; border: none; padding: 12px; border-radius: 4px; cursor: pointer; }
-        .msg { color: green; font-weight: bold; }
-        a { display: inline-block; margin-bottom: 20px; text-decoration: none; color: #666; }
+        :root { --primary: #f09199; --bg: #f8f9fa; }
+        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: #333; line-height: 1.6; margin: 0; padding: 20px; }
+        .container { max-width: 600px; margin: 0 auto; }
+        .card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        h1 { font-size: 1.5rem; margin-top: 0; display: flex; align-items: center; gap: 10px; }
+        .input-group { display: flex; flex-direction: column; gap: 12px; }
+        input, textarea, select { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; transition: 0.2s; }
+        input:focus { border-color: var(--primary); }
+        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .btn { cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: 0.3s; }
+        .btn-fetch { background: #4f46e5; color: white; padding: 0 15px; }
+        .btn-submit { background: var(--primary); color: white; padding: 15px; margin-top: 10px; font-size: 1rem; }
+        .btn-submit:hover { opacity: 0.9; transform: translateY(-1px); }
+        .msg { background: #d1fae5; color: #065f46; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
+        .btn-del { background: #ff4757; color: white; padding: 4px 10px; font-size: 12px; }
     </style>
 </head>
 <body>
-    <a href="/">← 返回首页</a>
-    <h1>新增追番记录</h1>
-    
-    {message && <p class="msg">{message}</p>}
+    <div class="container">
+        <a href="/" style="text-decoration: none; color: #666; font-size: 14px;">← 返回首页</a>
+        <div class="card" style="margin-top: 10px;">
+            <h1>📺 新增追番评价</h1>
+            
+            {message && <div class="msg">{message}</div>}
 
-    <form method="POST">
-        <input type="text" name="title" placeholder="番剧名称" required />
-        <input type="number" step="0.1" name="score" placeholder="评分 (0-10)" required />
-        <select name="status">
-            <option value="正在追">正在追</option>
-            <option value="已完结">已完结</option>
-            <option value="想看">想看</option>
-            <option value="弃番">弃番</option>
-        </select>
-        <input type="url" name="image_url" placeholder="封面图 URL (可选)" />
-        <textarea name="review" placeholder="写下你的评价..." rows="4"></textarea>
-        <button type="submit">立即发布</button>
-    </form>
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <input type="text" id="bgmId" placeholder="Bangumi ID (如: 314112)" style="flex:1" />
+                <button type="button" class="btn btn-fetch" onclick="fetchBgmInfo()">自动抓取</button>
+            </div>
+
+            <form method="POST" class="input-group">
+                <input type="hidden" name="action" value="add" />
+                <input type="text" name="title" id="title" placeholder="番剧名称" required />
+                <div class="row">
+                    <input type="number" step="0.1" name="score" placeholder="我的评分 (0-10)" required />
+                    <input type="number" step="0.1" name="bgm_score" id="bgm_score" placeholder="Bgm 评分 (自动)" readonly style="background:#f5f5f5" />
+                </div>
+                <select name="status">
+                    <option value="正在追">正在追</option>
+                    <option value="已完结">已完结</option>
+                    <option value="想看">想看</option>
+                    <option value="弃番">弃番</option>
+                </select>
+                <input type="url" name="image_url" id="image_url" placeholder="封面图 URL" />
+                <textarea name="review" id="review" placeholder="写下你的简评..." rows="4"></textarea>
+                <button type="submit" class="btn btn-submit">确认发布</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2>管理记录 ({animeList.length})</h2>
+            {animeList.map(anime => (
+                <div class="item">
+                    <span>{anime.title}</span>
+                    <form method="POST" style="margin:0">
+                        <input type="hidden" name="action" value="delete" />
+                        <input type="hidden" name="id" value={anime.id} />
+                        <button type="submit" class="btn btn-del" onclick="return confirm('确定删除？')">删除</button>
+                    </form>
+                </div>
+            ))}
+        </div>
+    </div>
+
+    <script is:inline>
+        async function fetchBgmInfo() {
+            const id = document.getElementById('bgmId').value;
+            if(!id) return alert('请输入 ID');
+            const btn = document.querySelector('.btn-fetch');
+            btn.innerText = '抓取中...';
+            try {
+                const res = await fetch(`https://api.bgm.tv/v0/subjects/${id}`);
+                const data = await res.json();
+                document.getElementById('title').value = data.name_cn || data.name;
+                document.getElementById('bgm_score').value = data.rating.score || 0;
+                document.getElementById('image_url').value = data.images.large;
+                document.getElementById('review').value = data.summary ? data.summary.substring(0, 120) + '...' : '';
+                btn.innerText = '抓取成功';
+            } catch (e) {
+                alert('抓取失败，请检查 ID');
+                btn.innerText = '自动抓取';
+            }
+        }
+    </script>
 </body>
 </html>
