@@ -4,7 +4,6 @@ import { env } from "cloudflare:workers";
 let message = "";
 const db = env.DB;
 
-// 处理 POST 请求
 if (Astro.request.method === "POST") {
   try {
     const data = await Astro.request.formData();
@@ -21,9 +20,8 @@ if (Astro.request.method === "POST") {
       await db.prepare(
         "INSERT INTO anime (title, score, bgm_score, status, review, image_url) VALUES (?, ?, ?, ?, ?, ?)"
       ).bind(title, score, bgm_score, status, review, image_url).run();
-      message = "✅ 发布成功！数据已存入 D1";
-    } 
-    else if (action === "delete") {
+      message = "✅ 发布成功！";
+    } else if (action === "delete") {
       const id = data.get("id");
       await db.prepare("DELETE FROM anime WHERE id = ?").bind(id).run();
       message = "🗑️ 记录已删除";
@@ -33,7 +31,6 @@ if (Astro.request.method === "POST") {
   }
 }
 
-// 获取现有列表
 const { results: animeList } = await db.prepare("SELECT id, title FROM anime ORDER BY id DESC").all();
 ---
 
@@ -41,67 +38,84 @@ const { results: animeList } = await db.prepare("SELECT id, title FROM anime ORD
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>后台管理 - AnimeTracker</title>
+    <title>后台管理 - 自动搜索版</title>
     <style>
-        :root { --primary: #f09199; --bg: #f8f9fa; }
-        body { font-family: -apple-system, system-ui, sans-serif; background: var(--bg); color: #333; line-height: 1.6; margin: 0; padding: 20px; }
+        :root { --primary: #f09199; }
+        body { font-family: sans-serif; background: #f8f9fa; padding: 20px; }
         .container { max-width: 600px; margin: 0 auto; }
-        .card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 4px 20px rgba(0,0,0,0.08); margin-bottom: 20px; }
-        h1 { font-size: 1.5rem; margin-top: 0; display: flex; align-items: center; gap: 10px; }
-        .input-group { display: flex; flex-direction: column; gap: 12px; }
-        input, textarea, select { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; outline: none; transition: 0.2s; }
-        input:focus { border-color: var(--primary); }
-        .row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-        .btn { cursor: pointer; border: none; border-radius: 8px; font-weight: bold; transition: 0.3s; }
-        .btn-fetch { background: #4f46e5; color: white; padding: 0 15px; }
-        .btn-submit { background: var(--primary); color: white; padding: 15px; margin-top: 10px; font-size: 1rem; }
-        .btn-submit:hover { opacity: 0.9; transform: translateY(-1px); }
-        .msg { background: #d1fae5; color: #065f46; padding: 10px; border-radius: 8px; margin-bottom: 20px; text-align: center; }
-        .item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f0f0f0; }
-        .btn-del { background: #ff4757; color: white; padding: 4px 10px; font-size: 12px; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        
+        /* 搜索框样式 */
+        .search-section { background: #fff0f1; border: 1px solid var(--primary); padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+        .search-results { 
+            margin-top: 10px; max-height: 200px; overflow-y: auto; border: 1px solid #ddd; 
+            border-radius: 8px; display: none; background: white;
+        }
+        .result-item { 
+            display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #eee; gap: 10px;
+        }
+        .result-item:hover { background: #fdf2f3; }
+        .result-item img { width: 40px; height: 50px; object-fit: cover; border-radius: 4px; }
+        
+        form { display: flex; flex-direction: column; gap: 10px; }
+        input, textarea, select { padding: 10px; border: 1px solid #ddd; border-radius: 6px; }
+        .btn-submit { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-search { background: #444; color: white; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; }
     </style>
 </head>
 <body>
     <div class="container">
-        <a href="/" style="text-decoration: none; color: #666; font-size: 14px;">← 返回首页</a>
+        <a href="/" style="text-decoration: none; color: #999;">← 首页</a>
+        
         <div class="card" style="margin-top: 10px;">
-            <h1>📺 新增追番评价</h1>
-            
-            {message && <div class="msg">{message}</div>}
+            <h1>新增追番评价</h1>
+            {message && <div style="color: green; margin-bottom: 15px;">{message}</div>}
 
-            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
-                <input type="text" id="bgmId" placeholder="Bangumi ID (如: 314112)" style="flex:1" />
-                <button type="button" class="btn btn-fetch" onclick="fetchBgmInfo()">自动抓取</button>
+            <div class="search-section">
+                <p style="margin-top: 0; font-size: 0.9rem; color: #666;">第一步：输入名字搜索番剧</p>
+                <div style="display: flex; gap: 8px;">
+                    <input type="text" id="keyword" placeholder="番剧名字 (如: 孤独摇滚)" style="flex: 1;" />
+                    <button type="button" class="btn-search" onclick="searchAnime()">搜索</button>
+                </div>
+                <div id="results" class="search-results"></div>
             </div>
 
-            <form method="POST" class="input-group">
+            <form method="POST">
                 <input type="hidden" name="action" value="add" />
-                <input type="text" name="title" id="title" placeholder="番剧名称" required />
-                <div class="row">
-                    <input type="number" step="0.1" name="score" placeholder="我的评分 (0-10)" required />
-                    <input type="number" step="0.1" name="bgm_score" id="bgm_score" placeholder="Bgm 评分 (自动)" readonly style="background:#f5f5f5" />
+                <label style="font-size: 0.8rem; color: #999;">番剧名称</label>
+                <input type="text" name="title" id="title" placeholder="点击搜索结果自动填入" required />
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div>
+                        <label style="font-size: 0.8rem; color: #999;">我的评分 (0-10)</label>
+                        <input type="number" step="0.1" name="score" placeholder="必填" style="width: 100%; box-sizing: border-box;" required />
+                    </div>
+                    <div>
+                        <label style="font-size: 0.8rem; color: #999;">Bgm 官方分</label>
+                        <input type="number" step="0.1" name="bgm_score" id="bgm_score" readonly style="background: #f5f5f5; width: 100%; box-sizing: border-box;" />
+                    </div>
                 </div>
+
                 <select name="status">
                     <option value="正在追">正在追</option>
                     <option value="已完结">已完结</option>
                     <option value="想看">想看</option>
                     <option value="弃番">弃番</option>
                 </select>
-                <input type="url" name="image_url" id="image_url" placeholder="封面图 URL" />
-                <textarea name="review" id="review" placeholder="写下你的简评..." rows="4"></textarea>
-                <button type="submit" class="btn btn-submit">确认发布</button>
+                <input type="url" name="image_url" id="image_url" placeholder="封面图片地址" />
+                <textarea name="review" id="review" placeholder="我的简评..." rows="3"></textarea>
+                <button type="submit" class="btn-submit">确认发布</button>
             </form>
         </div>
 
         <div class="card">
-            <h2>管理记录 ({animeList.length})</h2>
-            {animeList.map(anime => (
-                <div class="item">
-                    <span>{anime.title}</span>
-                    <form method="POST" style="margin:0">
-                        <input type="hidden" name="action" value="delete" />
-                        <input type="hidden" name="id" value={anime.id} />
-                        <button type="submit" class="btn btn-del" onclick="return confirm('确定删除？')">删除</button>
+            <h3>管理现有记录</h3>
+            {animeList.map(item => (
+                <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee;">
+                    <span style="font-size: 0.9rem;">{item.title}</span>
+                    <form method="POST" style="margin:0;">
+                        <input type="hidden" name="action" value="delete" /><input type="hidden" name="id" value={item.id} />
+                        <button type="submit" style="color: red; border:none; background:none; cursor:pointer;" onclick="return confirm('确定？')">删除</button>
                     </form>
                 </div>
             ))}
@@ -109,23 +123,48 @@ const { results: animeList } = await db.prepare("SELECT id, title FROM anime ORD
     </div>
 
     <script is:inline>
-        async function fetchBgmInfo() {
-            const id = document.getElementById('bgmId').value;
-            if(!id) return alert('请输入 ID');
-            const btn = document.querySelector('.btn-fetch');
-            btn.innerText = '抓取中...';
+        async function searchAnime() {
+            const kw = document.getElementById('keyword').value;
+            if (!kw) return;
+            const resBox = document.getElementById('results');
+            resBox.style.display = 'block';
+            resBox.innerHTML = '<p style="padding:10px;">搜索中...</p>';
+
             try {
-                const res = await fetch(`https://api.bgm.tv/v0/subjects/${id}`);
+                // 1. 调用 Bangumi 搜索 API (限制返回 5 个结果，类型为 2=动漫)
+                const res = await fetch(`https://api.bgm.tv/v0/search/subjects?keywords=${encodeURIComponent(kw)}&limit=5&type=2`);
                 const data = await res.json();
-                document.getElementById('title').value = data.name_cn || data.name;
-                document.getElementById('bgm_score').value = data.rating.score || 0;
-                document.getElementById('image_url').value = data.images.large;
-                document.getElementById('review').value = data.summary ? data.summary.substring(0, 120) + '...' : '';
-                btn.innerText = '抓取成功';
+                
+                if (data.data && data.data.length > 0) {
+                    resBox.innerHTML = data.data.map(item => `
+                        <div class="result-item" onclick="fillForm(${item.id})">
+                            <img src="${item.images.small}" />
+                            <div>
+                                <div style="font-weight:bold; font-size:14px;">${item.name_cn || item.name}</div>
+                                <div style="font-size:12px; color:#999;">${item.name} (${item.date || '未知年份'})</div>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    resBox.innerHTML = '<p style="padding:10px;">未找到结果</p>';
+                }
             } catch (e) {
-                alert('抓取失败，请检查 ID');
-                btn.innerText = '自动抓取';
+                resBox.innerHTML = '<p style="padding:10px; color:red;">搜索失败</p>';
             }
+        }
+
+        async function fillForm(id) {
+            // 点击搜索结果后，再详细抓取该 ID 的具体信息
+            const res = await fetch(`https://api.bgm.tv/v0/subjects/${id}`);
+            const data = await res.json();
+            
+            document.getElementById('title').value = data.name_cn || data.name;
+            document.getElementById('image_url').value = data.images.large;
+            document.getElementById('bgm_score').value = data.rating.score || 0;
+            document.getElementById('review').value = data.summary ? data.summary.substring(0, 100) + '...' : '';
+            
+            // 隐藏搜索框
+            document.getElementById('results').style.display = 'none';
         }
     </script>
 </body>
