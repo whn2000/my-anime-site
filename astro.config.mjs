@@ -1,9 +1,11 @@
-// @ts-check
 import { defineConfig } from 'astro/config';
-
 import cloudflare from '@astrojs/cloudflare';
 
-// https://astro.build/config
 export default defineConfig({
-  adapter: cloudflare()
+  output: 'server', // 核心设置：开启服务端模式
+  adapter: cloudflare({
+    platformProxy: {
+      enabled: true,
+    },
+  }),
 });
