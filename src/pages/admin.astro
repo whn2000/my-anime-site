@@ -1,25 +1,52 @@
 ---
-export const prerender = false; // 1. 强制该页面为 SSR 模式
+export const prerender = false; // 强制 SSR 模式
 
 import { env } from "cloudflare:workers";
 
 const db = env.DB;
 let message = "";
 
-// --- 处理服务端逻辑 ---
+// --- 1. 服务端逻辑处理 ---
 
-// A. 处理搜索请求 (通过 URL 参数 ?q=关键字 触发)
 const url = new URL(Astro.request.url);
 const searchQuery = url.searchParams.get("q");
 
+// A. 搜索代理 (对接 AniList GraphQL)
 if (searchQuery) {
+  const query = `
+    query ($search: String) {
+      Page(perPage: 5) {
+        media(search: $search, type: ANIME) {
+          id
+          title { romaji english native }
+          coverImage { large }
+          averageScore
+          description
+          startDate { year }
+        }
+      }
+    }
+  `;
+
   try {
-    const bgmRes = await fetch(
-      `https://api.bgm.tv/v0/search/subjects?keywords=${encodeURIComponent(searchQuery)}&limit=5&type=2`,
-      { headers: { 'User-Agent': 'whn2000-anime-tracker/1.0' } }
-    );
-    const data = await bgmRes.json();
-    return new Response(JSON.stringify(data), {
+    const response = await fetch("https://graphql.anilist.co", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Accept": "application/json" },
+      body: JSON.stringify({ query, variables: { search: searchQuery } }),
+    });
+    const result = await response.json();
+    
+    // 格式化数据方便前端使用
+    const formattedData = result.data.Page.media.map(item => ({
+      id: item.id,
+      title: item.title.english || item.title.romaji || item.title.native,
+      image: item.coverImage.large,
+      score: item.averageScore ? (item.averageScore / 10).toFixed(1) : "0",
+      year: item.startDate.year,
+      description: item.description?.replace(/<[^>]*>?/gm, '').substring(0, 150) + "..." // 去掉HTML标签并截断
+    }));
+
+    return new Response(JSON.stringify({ data: formattedData }), {
       headers: { "Content-Type": "application/json" }
     });
   } catch (e) {
@@ -62,64 +89,73 @@ const { results: animeList } = await db.prepare("SELECT id, title FROM anime ORD
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>后台管理 - 动态版</title>
+    <title>后台管理 - AniList 全球版</title>
     <style>
-        :root { --primary: #f09199; }
-        body { font-family: sans-serif; background: #fdfdfd; padding: 20px; }
+        :root { --primary: #3dbbee; } /* AniList 风格的蓝色 */
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; padding: 20px; color: #333; }
         .container { max-width: 600px; margin: 0 auto; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid #eee; }
-        .search-bar { display: flex; gap: 8px; margin-bottom: 15px; }
-        .search-results { border: 1px solid #eee; border-radius: 8px; display: none; margin-bottom: 20px; background: #fff; overflow: hidden; }
-        .result-item { display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #f9f9f9; gap: 12px; }
-        .result-item:hover { background: #fff5f6; }
-        .result-item img { width: 45px; height: 60px; object-fit: cover; border-radius: 4px; }
-        form { display: flex; flex-direction: column; gap: 12px; }
-        input, textarea, select { padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; }
-        .btn-submit { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 8px; cursor: pointer; font-weight: bold; }
-        .btn-del { color: #ff4757; background: none; border: 1px solid #ff4757; padding: 4px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; }
+        .card { background: white; padding: 25px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.05); margin-bottom: 25px; }
+        .search-bar { display: flex; gap: 10px; margin-bottom: 20px; }
+        .search-results { border: 1px solid #eee; border-radius: 12px; display: none; margin-bottom: 20px; background: #fff; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .result-item { display: flex; align-items: center; padding: 12px; cursor: pointer; border-bottom: 1px solid #f9f9f9; gap: 15px; transition: 0.2s; }
+        .result-item:hover { background: #f0faff; }
+        .result-item img { width: 45px; height: 65px; object-fit: cover; border-radius: 6px; }
+        form { display: flex; flex-direction: column; gap: 15px; }
+        input, textarea, select { padding: 12px; border: 1px solid #ddd; border-radius: 10px; font-size: 14px; outline: none; transition: 0.3s; }
+        input:focus { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(61, 187, 238, 0.1); }
+        .btn-submit { background: var(--primary); color: white; border: none; padding: 14px; border-radius: 10px; cursor: pointer; font-weight: bold; font-size: 16px; }
+        .btn-del { color: #ff4d4f; border: 1px solid #ff4d4f; background: none; padding: 5px 12px; border-radius: 8px; cursor: pointer; font-size: 12px; transition: 0.3s; }
+        .btn-del:hover { background: #fff1f0; }
     </style>
 </head>
 <body>
     <div class="container">
-        <a href="/" style="text-decoration: none; color: #999; font-size: 14px;">← 首页预览</a>
+        <a href="/" style="text-decoration: none; color: #888; font-size: 14px; margin-bottom: 10px; display: inline-block;">← 返回首页</a>
         
-        <div class="card" style="margin-top: 10px;">
-            <h2 style="margin-top:0">管理我的追番列表</h2>
-            {message && <div style="color: #065f46; background: #d1fae5; padding: 10px; border-radius: 8px; margin-bottom: 15px;">{message}</div>}
+        <div class="card">
+            <h2 style="margin-top:0; color: var(--primary);">管理追番列表</h2>
+            {message && <div style="color: #2f54eb; background: #f0f5ff; padding: 12px; border-radius: 10px; margin-bottom: 20px; text-align: center; border: 1px solid #adc6ff;">{message}</div>}
 
             <div class="search-bar">
-                <input type="text" id="kw" placeholder="输入番剧名搜索..." style="flex:1" />
-                <button type="button" onclick="search()" id="sBtn" style="padding:0 20px; border-radius:8px; border:none; background:#444; color:white; cursor:pointer;">搜索</button>
+                <input type="text" id="kw" placeholder="输入番剧名 (英文/罗马音更准)..." style="flex:1" />
+                <button type="button" onclick="search()" id="sBtn" style="padding:0 20px; border-radius:10px; border:none; background:#35495e; color:white; cursor:pointer; font-weight:bold;">搜索</button>
             </div>
             <div id="res" class="search-results"></div>
 
             <form method="POST" action="/admin">
                 <input type="hidden" name="action" value="add" />
-                <input type="text" name="title" id="t" placeholder="名称" required />
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
-                    <input type="number" step="0.1" name="score" placeholder="我的评分" required />
-                    <input type="number" step="0.1" name="bgm_score" id="bs" placeholder="Bgm 官方分" readonly style="background:#f9f9f9" />
+                <input type="text" name="title" id="t" placeholder="番剧标题" required />
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                    <div>
+                        <label style="font-size: 12px; color: #999; margin-left: 5px;">我的评分</label>
+                        <input type="number" step="0.1" name="score" placeholder="0.0 - 10.0" style="width:100%; box-sizing: border-box;" required />
+                    </div>
+                    <div>
+                        <label style="font-size: 12px; color: #999; margin-left: 5px;">AniList 官方分</label>
+                        <input type="number" step="0.1" name="bgm_score" id="bs" readonly style="background:#f5f5f5; width:100%; box-sizing: border-box;" />
+                    </div>
                 </div>
                 <select name="status">
                     <option value="正在追">正在追</option>
                     <option value="已完结">已完结</option>
                     <option value="想看">想看</option>
+                    <option value="弃番">弃番</option>
                 </select>
                 <input type="url" name="image_url" id="img" placeholder="海报 URL" />
-                <textarea name="review" id="rv" placeholder="简评..." rows="3"></textarea>
-                <button type="submit" class="btn-submit">保存发布</button>
+                <textarea name="review" id="rv" placeholder="写下你的评价..." rows="4"></textarea>
+                <button type="submit" class="btn-submit">保存并发布</button>
             </form>
         </div>
 
         <div class="card">
-            <h3>现有列表 ({animeList.length})</h3>
+            <h3 style="margin-top:0">已记录的番剧 ({animeList.length})</h3>
             {animeList.map(item => (
-                <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #f9f9f9; align-items:center;">
-                    <span style="font-size: 14px; color: #444;">{item.title}</span>
+                <div style="display: flex; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid #f0f0f0; align-items:center;">
+                    <span style="font-size: 14px; font-weight: 500;">{item.title}</span>
                     <form method="POST" action="/admin" style="margin:0;">
                         <input type="hidden" name="action" value="delete" />
                         <input type="hidden" name="id" value={item.id} />
-                        <button type="submit" class="btn-del" onclick="return confirm('确定要删除这条记录吗？')">删除</button>
+                        <button type="submit" class="btn-del" onclick="return confirm('确定要删除吗？')">删除</button>
                     </form>
                 </div>
             ))}
@@ -127,41 +163,50 @@ const { results: animeList } = await db.prepare("SELECT id, title FROM anime ORD
     </div>
 
     <script is:inline>
+        let searchCache = [];
+
         async function search() {
             const kw = document.getElementById('kw').value;
             if(!kw) return;
             const btn = document.getElementById('sBtn');
             const resBox = document.getElementById('res');
-            btn.innerText = '...';
+            
+            btn.innerText = '正在搜...';
             resBox.style.display = 'block';
-            resBox.innerHTML = '<div style="padding:15px; font-size:14px; color:#666;">正在搜索 Bangumi 数据库...</div>';
+            resBox.innerHTML = '<div style="padding:15px; font-size:14px; color:#666;">正在连接 AniList 全球数据库...</div>';
             
             try {
-                // 关键点：请求本页面的服务端代理，避免跨域
+                // 调用本页面的服务端代理请求
                 const r = await fetch(`/admin?q=${encodeURIComponent(kw)}`);
                 const d = await r.json();
+                
                 if(d.data && d.data.length > 0) {
-                    resBox.innerHTML = d.data.map(i => `
-                        <div class="result-item" onclick="pick(${i.id})">
-                            <img src="${i.images.small}" />
+                    searchCache = d.data; // 缓存结果
+                    resBox.innerHTML = d.data.map((i, idx) => `
+                        <div class="result-item" onclick="pick(${idx})">
+                            <img src="${i.image}" />
                             <div>
-                                <div style="font-weight:bold; font-size:14px;">${i.name_cn || i.name}</div>
-                                <div style="font-size:12px; color:#999;">${i.date || '未知年份'}</div>
+                                <div style="font-weight:bold; font-size:14px;">${i.title}</div>
+                                <div style="font-size:12px; color:#999;">${i.year || '未知年份'} | 官方评分: ${i.score}</div>
                             </div>
                         </div>
                     `).join('');
-                } else { resBox.innerHTML = '<div style="padding:15px;">无结果</div>'; }
-            } catch (e) { resBox.innerHTML = '<div style="padding:15px;">搜索失败</div>'; }
-            finally { btn.innerText = '搜索'; }
+                } else {
+                    resBox.innerHTML = '<div style="padding:15px;">未找到结果，请尝试英文名称</div>';
+                }
+            } catch (e) {
+                resBox.innerHTML = '<div style="padding:15px; color:red;">搜索失败，请检查网络</div>';
+            } finally {
+                btn.innerText = '搜索';
+            }
         }
 
-        async function pick(id) {
-            const r = await fetch(`https://api.bgm.tv/v0/subjects/${id}`);
-            const d = await r.json();
-            document.getElementById('t').value = d.name_cn || d.name;
-            document.getElementById('bs').value = d.rating.score || 0;
-            document.getElementById('img').value = d.images.large;
-            document.getElementById('rv').value = d.summary ? d.summary.substring(0, 80) + '...' : '';
+        function pick(index) {
+            const data = searchCache[index];
+            document.getElementById('t').value = data.title;
+            document.getElementById('bs').value = data.score;
+            document.getElementById('img').value = data.image;
+            document.getElementById('rv').value = data.description;
             document.getElementById('res').style.display = 'none';
         }
     </script>
