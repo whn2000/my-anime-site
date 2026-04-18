@@ -51,7 +51,7 @@ export async function generatePbkdf2Hash(password, saltHexStr = null) {
 
   const finalSaltHex = Array.from(saltArray).map(b => b.toString(16).padStart(2, '0')).join('');
   const finalHashHex = Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
-  return ${finalSaltHex}:;
+  return `${finalSaltHex}:${finalHashHex}`;
 }
 /**
  * 生成随机 Session Token (64 字符十六进制)
