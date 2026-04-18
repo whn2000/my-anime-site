@@ -208,7 +208,7 @@ const animeList = rawAnimeList.map(a => ({
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>管理后台 - MyAnimeList</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/opencc-js@1.0.5/dist/umd/full.js"></script>
+    <script src="https://unpkg.com/opencc-js@1.0.5/dist/umd/full.js" defer></script>
     <style>
         :root { --main: #3dbbee; --edit: #f09199; }
         body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
@@ -281,8 +281,8 @@ const animeList = rawAnimeList.map(a => ({
 
             <input type="text" name="title" id="t" placeholder="番剧名称" required />
             <div style="display:flex; gap:10px;">
-                <input type="number" step="0.1" name="score" id="s" placeholder="我的独立评分 (10分制)" required />
-                <input type="number" step="0.1" name="bgm_score" id="bs" placeholder="Bangumi 官方评分" readonly style="background:#f9f9f9" />
+                <input type="number" step="0.1" min="0" max="10" name="score" id="s" placeholder="我的独立评分 (10分制)" required />
+                <input type="number" step="0.1" min="0" max="10" name="bgm_score" id="bs" placeholder="Bangumi 官方评分" readonly style="background:#f9f9f9" />
             </div>
             
             <div style="display:flex; gap:10px;">
@@ -418,6 +418,319 @@ const animeList = rawAnimeList.map(a => ({
           </form>
       </div>
     )}
+
+    <script is:inline>
+        let searchCache = [];
+
+        async function fetchBangumiDetail(bgmId) {
+            let dir = '', std = '', vas = '';
+            try {
+                const pRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgmId}/persons`);
+                const persons = await pRes.json();
+                if(Array.isArray(persons)){
+                    const d = persons.find(p => p.relation === '导演');
+                    if(d) dir = d.name;
+                    const s = persons.find(p => p.relation === '动画制作');
+                    if(s) std = s.name;
+                }
+            } catch(e){}
+            
+            try {
+                const cRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgmId}/characters`);
+                const chars = await cRes.json();
+                if(Array.isArray(chars)){
+                    const actorNames = [];
+                    for(let c of chars) {
+                        if(c.actors && c.actors.length > 0) actorNames.push(c.actors[0].name);
+                        if(actorNames.length >= 3) break;
+                    }
+                    vas = actorNames.join(', ');
+                }
+            } catch(e){}
+            
+            return { dir, std, vas };
+        }
+
+        async function fetchBangumiSearch(originalKw) {
+            let kw = originalKw.trim();
+
+            if (/^\d+$/.test(kw)) {
+                try {
+                    const idRes = await fetch(`https://api.bgm.tv/subject/${kw}?responseGroup=large`);
+                    const single = await idRes.json();
+                    if (single && single.id) {
+                        return { list: [single] };
+                    }
+                } catch(e) {}
+            }
+
+            try {
+                if (typeof OpenCC !== 'undefined') {
+                    const t2s = OpenCC.Converter({ from: 'tw', to: 'cn' });
+                    kw = t2s(kw);
+                }
+            } catch(e) {}
+
+            async function doFetch(term) {
+                const res = await fetch(`https://api.bgm.tv/search/subject/${encodeURIComponent(term)}?type=2&responseGroup=large`);
+                return await res.json();
+            }
+
+            try {
+                let result = await doFetch(kw);
+                if (result.list && result.list.length > 0) return result;
+                
+                // 模糊处理：去除副标题、括号内容、特殊标点后取核心词
+                let fuzzyKw = kw.replace(/（[^）]*）|\([^)]*\)|\[[^\]]*\]|【[^】]*】/g, ''); 
+                fuzzyKw = fuzzyKw.replace(/[第].*[季期]/g, ''); 
+                fuzzyKw = fuzzyKw.split(' ')[0]; 
+                fuzzyKw = fuzzyKw.split('：')[0]; 
+                
+                // 处理如果是类似 Re:从零开始 这种，如果前半部分太短则取全部去括号的版本
+                if (fuzzyKw.length < 2) {
+                     fuzzyKw = kw.replace(/（[^）]*）|\([^)]*\)|\[[^\]]*\]|【[^】]*】/g, '').replace(/[第].*[季期]/g, '').trim();
+                }
+                fuzzyKw = fuzzyKw.trim();
+
+                if (fuzzyKw && fuzzyKw.length >= 2 && fuzzyKw !== kw) {
+                     await new Promise(r => setTimeout(r, 600));
+                     result = await doFetch(fuzzyKw);
+                     if (result.list && result.list.length > 0) return result;
+                }
+                return {list: null};
+            } catch(e) {
+                return {list: null};
+            }
+        }
+
+        async function doSearch() {
+            const kw = document.getElementById('kw').value;
+            if(!kw) return;
+            
+            const resBox = document.getElementById('res');
+            resBox.style.display = 'block';
+            resBox.innerHTML = '<div style="padding:10px;">🔍 正在直连 Bangumi...</div>';
+
+            try {
+                const result = await fetchBangumiSearch(kw);
+                if (result.list && result.list.length > 0) {
+                    searchCache = result.list;
+                    resBox.innerHTML = searchCache.map((i, index) => {
+                        const title = i.name_cn || i.name;
+                        const sub = i.name_cn && i.name !== i.name_cn ? `| ${i.name}` : '';
+                        const score = i.rating ? i.rating.score : 'N/A';
+                        const year = i.air_date ? i.air_date.split('-')[0] : '';
+                        const img = i.images ? i.images.common : '';
+                        return `
+                        <div class="item" onclick="selectSearchItem(${index})">
+                            <img src="${img}" style="width:35px; height:50px; border-radius:4px; object-fit:cover;" />
+                            <div>
+                                <div style="font-weight:bold; font-size:12px;">${title} <span style="color:#999; font-size:10px; font-weight:normal;">${sub}</span></div>
+                                <div style="font-size:10px; color:#999;">${year} | 评分: ${score}</div>
+                            </div>
+                        </div>
+                    `}).join('');
+                } else {
+                    resBox.innerHTML = '<div style="padding:10px;">❌ 未找到结果 (请尝试更换更准确的名称)</div>';
+                }
+            } catch (err) {
+                resBox.innerHTML = '<div style="padding:10px; color:red;">⚠️ 网络连接失败</div>';
+            }
+        }
+
+        async function selectSearchItem(idx) {
+            const item = searchCache[idx];
+            document.getElementById('t').value = item.name_cn || item.name;
+            document.getElementById('bs').value = item.rating && item.rating.score ? item.rating.score : 0;
+            document.getElementById('img').value = item.images ? item.images.large || item.images.common : '';
+            if (item.summary) {
+                document.getElementById('bangumi-summary').value = item.summary.substring(0, 500) + "...";
+            } else {
+                document.getElementById('bangumi-summary').value = "";
+            }
+            
+            document.getElementById('res').style.display = 'none';
+
+            // Placeholder for deep fetching
+            document.getElementById('dir').value = "获取中...";
+            document.getElementById('std').value = "获取中...";
+            document.getElementById('vas').value = "获取中...";
+
+            const details = await fetchBangumiDetail(item.id);
+            document.getElementById('dir').value = details.dir;
+            document.getElementById('std').value = details.std;
+            document.getElementById('vas').value = details.vas;
+        }
+
+        function submitBatchDelete() {
+            const checkboxes = document.querySelectorAll('.anime-checkbox:checked');
+            if (checkboxes.length === 0) {
+                alert("请至少选择一个要删除的番剧！");
+                return false;
+            }
+            if (!confirm(`确定要永久删除这 ${checkboxes.length} 部番剧及其所有评分和评论吗？`)) {
+                return false;
+            }
+            const ids = Array.from(checkboxes).map(c => c.value).join(',');
+            document.getElementById('batch-delete-ids').value = ids;
+            return true;
+        }
+
+        function prepareEdit(item) {
+            document.getElementById('form-title').innerText = "正在编辑：" + item.title;
+            document.getElementById('form-action').value = "update";
+            document.getElementById('form-id').value = item.id;
+            document.getElementById('submit-btn').innerText = "保存我的评分及番剧信息";
+            document.getElementById('submit-btn').style.background = "#f09199";
+            document.getElementById('cancel-btn').style.display = "block";
+            
+            document.getElementById('t').value = item.title;
+            document.getElementById('s').value = item.score; // 可能是空的
+            document.getElementById('bs').value = item.bgm_score;
+            document.getElementById('st').value = item.status;
+            document.getElementById('img').value = item.image_url;
+            document.getElementById('dir').value = item.director || '';
+            document.getElementById('vas').value = item.voice_actors || '';
+            document.getElementById('std').value = item.studio || '';
+            document.getElementById('rv').value = item.review;
+            document.getElementById('bangumi-summary').value = item.summary;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function toggleAnimeList() {
+            const wrap = document.getElementById('anime-list-wrap');
+            const arrow = document.getElementById('list-arrow');
+            if (wrap.style.display === 'none') {
+                wrap.style.display = 'block';
+                arrow.style.transform = 'rotate(0deg)';
+            } else {
+                wrap.style.display = 'none';
+                arrow.style.transform = 'rotate(-90deg)';
+            }
+        }
+
+        function resetToAdd() {
+            document.getElementById('form-title').innerText = "添加新番剧";
+            document.getElementById('form-action').value = "add";
+            document.getElementById('form-id').value = "";
+            document.getElementById('submit-btn').innerText = "发布到网站";
+            document.getElementById('submit-btn').style.background = "#3dbbee";
+            document.getElementById('cancel-btn').style.display = "none";
+            document.getElementById('bangumi-summary').value = "";
+            document.getElementById('main-form').reset();
+        }
+
+        async function startBatch() {
+            const lines = document.getElementById('batch-input').value.split('\n').map(l => l.trim()).filter(l => l);
+            if (lines.length === 0) return alert("请先输入需要查询的动漫名单");
+            
+            const status = document.getElementById('batch-status').value;
+            const prog = document.getElementById('batch-progress');
+            prog.style.display = 'block';
+            prog.innerHTML = '';
+            document.getElementById('batch-form').style.display = 'none';
+            const batchList = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const title = lines[i];
+
+                prog.innerHTML += `<div style="color:#555;">⏳ [${i+1}/${lines.length}] 正在深度搜索：<b>${title}</b>...</div>`;
+                prog.scrollTop = prog.scrollHeight;
+                
+                try {
+                    const result = await fetchBangumiSearch(title);
+                    
+                    if (result.list && result.list.length > 0) {
+                        const bgm = result.list[0];
+                        const details = await fetchBangumiDetail(bgm.id);
+                        
+                        const item = {
+                            title: bgm.name_cn || bgm.name,
+                            bgm_score: (bgm.rating && bgm.rating.score) ? bgm.rating.score : 0,
+                            image_url: bgm.images ? bgm.images.large || bgm.images.common : '',
+                            review: bgm.summary ? bgm.summary.substring(0, 500) + "..." : "",
+                            status: status,
+                            director: details.dir,
+                            studio: details.std,
+                            voice_actors: details.vas
+                        };
+                        batchList.push(item);
+                        prog.innerHTML += `<div style="color:#52c41a; margin-bottom:8px;">✅ 抓取成功: <b>${item.title}</b> (Bgm: ${item.bgm_score}) 导演: ${details.dir}</div>`;
+                    } else {
+                        prog.innerHTML += `<div style="color:#f5222d; margin-bottom:8px;">❌ 数据库未收录此作品: ${title}</div>`;
+                    }
+                } catch(e) {
+                    prog.innerHTML += `<div style="color:#f5222d; margin-bottom:8px;">❌ 网络中断，跳过抓取: ${title}</div>`;
+                }
+                
+                prog.scrollTop = prog.scrollHeight;
+                // 防止封IP，严格限速延迟
+                await new Promise(r => setTimeout(r, 600)); 
+            }
+            
+            prog.innerHTML += `<div style="color:#1890ff; margin-top:10px;">🎉 全部处理完毕！共组装好 ${batchList.length} 条记录。</div>`;
+            prog.scrollTop = prog.scrollHeight;
+            
+            if(batchList.length > 0) {
+                document.getElementById('batch-data-input').value = JSON.stringify(batchList);
+                document.getElementById('batch-form').style.display = 'block';
+            }
+        }
+
+        async function startBatchSync() {
+            const animeDataNode = document.getElementById('anime-data');
+            if (!animeDataNode) return;
+            const currentAnimes = JSON.parse(animeDataNode.getAttribute('data-json') || '[]');
+            if (currentAnimes.length === 0) return alert("当前没有任何番剧可更新");
+            
+            const prog = document.getElementById('sync-progress');
+            prog.style.display = 'block';
+            prog.innerHTML = '';
+            document.getElementById('sync-form').style.display = 'none';
+            const syncList = [];
+            
+            for (let i = 0; i < currentAnimes.length; i++) {
+                const item = currentAnimes[i];
+                prog.innerHTML += `<div style="color:#555;">⏳ [${i+1}/${currentAnimes.length}] 正在同步：<b>${item.title}</b>...</div>`;
+                prog.scrollTop = prog.scrollHeight;
+                
+                try {
+                    const result = await fetchBangumiSearch(item.title);
+                    if (result.list && result.list.length > 0) {
+                        const bgm = result.list[0];
+                        const details = await fetchBangumiDetail(bgm.id);
+                        
+                        syncList.push({
+                            id: item.id,
+                            bgm_score: (bgm.rating && bgm.rating.score) ? bgm.rating.score : 0,
+                            image_url: bgm.images ? bgm.images.large || bgm.images.common : '',
+                            summary: bgm.summary ? bgm.summary.substring(0, 500) + "..." : "",
+                            director: details.dir,
+                            studio: details.std,
+                            voice_actors: details.vas
+                        });
+                        prog.innerHTML += `<div style="color:#52c41a; margin-bottom:8px;">✅ 更新完毕: <b>${item.title}</b> (Bgm: ${(bgm.rating && bgm.rating.score) ? bgm.rating.score : 0})</div>`;
+                    } else {
+                        prog.innerHTML += `<div style="color:#faad14; margin-bottom:8px;">⚠️ 无法找到对应数据，跳过: ${item.title}</div>`;
+                    }
+                } catch(e) {
+                    prog.innerHTML += `<div style="color:#f5222d; margin-bottom:8px;">❌ 网络中断，跳过更新: ${item.title}</div>`;
+                }
+                
+                prog.scrollTop = prog.scrollHeight;
+                // 防止封IP，严格限速延迟
+                await new Promise(r => setTimeout(r, 600)); 
+            }
+            
+            prog.innerHTML += `<div style="color:#1890ff; margin-top:10px;">🎉 全部处理完毕！共已获取 ${syncList.length} 条番剧的最新 Bangumi 数据。</div>`;
+            prog.scrollTop = prog.scrollHeight;
+            
+            if(syncList.length > 0) {
+                document.getElementById('sync-data-input').value = JSON.stringify(syncList);
+                document.getElementById('sync-form').style.display = 'block';
+            }
+        }
+    </script>
 
     <script is:inline>
         let searchCache = [];

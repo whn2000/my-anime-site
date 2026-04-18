@@ -1,7 +1,11 @@
 ---
 export const prerender = false;
 import { env } from "cloudflare:workers";
-import { getCurrentUser, getRoleLabel, hasRole } from "../lib/auth.js";
+import { getCurrentUser } from "../lib/auth.js";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Navbar from "../components/Navbar.astro";
+import AnimeCard from "../components/AnimeCard.astro";
+import DetailModal from "../components/DetailModal.astro";
 
 const db = env.DB;
 
@@ -18,17 +22,20 @@ try {
     if (bgSetting && bgSetting.value) bgUrl = bgSetting.value;
 } catch (e) {}
 
-// 获取番剧列表，包含平均分和最新一条精选评价
+// 获取番剧列表，优化 N+1 查询，使用 LEFT JOIN 聚合
 const { results: animeList } = await db
     .prepare(
         `
-  SELECT a.*, 
-    (SELECT ROUND(AVG(score), 1) FROM anime_scores WHERE anime_id = a.id) as avg_score,
-    (SELECT COUNT(*) FROM anime_scores WHERE anime_id = a.id) as score_count,
+  SELECT 
+    a.*, 
+    ROUND(AVG(s.score), 1) as avg_score,
+    COUNT(s.id) as score_count,
     (SELECT review FROM anime_scores WHERE anime_id = a.id AND review IS NOT NULL AND review != '' ORDER BY created_at DESC LIMIT 1) as latest_review
-  FROM anime a 
+  FROM anime a
+  LEFT JOIN anime_scores s ON a.id = s.anime_id
+  GROUP BY a.id
   ORDER BY a.id DESC
-`,
+`
     )
     .all();
 
@@ -43,605 +50,145 @@ const getStatusTheme = (status) => {
 };
 ---
 
-<html lang="zh-CN">
-    <head>
-        <meta charset="utf-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>MyAnimeList - 追番记录</title>
-        <link
-            href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&family=Noto+Sans+SC:wght@300;500;700&display=swap"
-            rel="stylesheet"
-        />
-        <style>
-            :root {
-                --primary: #ff4757;
-                --glass: rgba(15, 15, 20, 0.6);
-                --glass-border: rgba(255, 255, 255, 0.15);
-                --card-shadow: 0 15px 35px 0 rgba(0, 0, 0, 0.4);
-                --text-main: #f1f2f6;
-                --meta-bg: rgba(255, 255, 255, 0.1);
-                --review-bg: rgba(0, 0, 0, 0.4);
-                --modal-bg: rgba(15, 15, 20, 0.85);
-                --input-bg: rgba(0, 0, 0, 0.5);
-                --bg-overlay: rgba(0, 0, 0, 0.2);
-            }
+<BaseLayout>
+    <style slot="body-start" is:global>
+        :root {
+            --primary: #ff4757;
+            --glass: rgba(15, 15, 20, 0.6);
+            --glass-border: rgba(255, 255, 255, 0.15);
+            --card-shadow: 0 15px 35px 0 rgba(0, 0, 0, 0.4);
+            --text-main: #f1f2f6;
+            --meta-bg: rgba(255, 255, 255, 0.1);
+            --review-bg: rgba(0, 0, 0, 0.4);
+            --modal-bg: rgba(15, 15, 20, 0.85);
+            --input-bg: rgba(0, 0, 0, 0.5);
+            --bg-overlay: rgba(0, 0, 0, 0.2);
+        }
 
-            :root[data-theme="light"] {
-                --primary: #ff4757;
-                --glass: rgba(255, 255, 255, 0.7);
-                --glass-border: rgba(255, 255, 255, 0.8);
-                --card-shadow: 0 15px 35px 0 rgba(31, 38, 135, 0.15);
-                --text-main: #2d3436;
-                --meta-bg: rgba(0, 0, 0, 0.05);
-                --review-bg: rgba(255, 255, 255, 0.6);
-                --modal-bg: rgba(255, 255, 255, 0.85);
-                --input-bg: rgba(255, 255, 255, 0.8);
-                --bg-overlay: rgba(255, 255, 255, 0.2);
-            }
+        :root[data-theme="light"] {
+            --primary: #ff4757;
+            --glass: rgba(255, 255, 255, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.8);
+            --card-shadow: 0 15px 35px 0 rgba(31, 38, 135, 0.15);
+            --text-main: #2d3436;
+            --meta-bg: rgba(0, 0, 0, 0.05);
+            --review-bg: rgba(255, 255, 255, 0.6);
+            --modal-bg: rgba(255, 255, 255, 0.85);
+            --input-bg: rgba(255, 255, 255, 0.8);
+            --bg-overlay: rgba(255, 255, 255, 0.2);
+        }
 
-            /* 1. 全屏沉浸式背景 */
-            body {
-                font-family: "Plus Jakarta Sans", "Noto Sans SC", sans-serif;
-                margin: 0;
-                background-color: var(--modal-bg);
-                background-image: var(--bgUrl);
-                background-size: cover;
-                background-position: center;
-                background-attachment: fixed;
-                min-height: 100vh;
-                color: var(--text-main);
-            }
+        /* 全屏沉浸式背景 */
+        body {
+            font-family: "Plus Jakarta Sans", "Noto Sans SC", sans-serif;
+            margin: 0;
+            background-color: var(--modal-bg);
+            background-image: var(--bgUrl);
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+            min-height: 100vh;
+            color: var(--text-main);
+        }
 
-            .bg-overlay {
-                position: fixed;
-                top: 0;
-                left: 0;
-                right: 0;
-                bottom: 0;
-                background: var(--bg-overlay);
-                z-index: -1;
-                pointer-events: none;
-            }
+        .bg-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: var(--bg-overlay);
+            z-index: -1;
+            pointer-events: none;
+        }
 
-            /* 导航栏 */
-            .navbar {
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                z-index: 100;
-                background: var(--glass);
-                backdrop-filter: blur(25px);
-                -webkit-backdrop-filter: blur(25px);
-                border: 1px solid var(--glass-border);
-                padding: 10px 20px;
-                border-radius: 100px;
-                display: flex;
-                gap: 15px;
-                align-items: center;
-                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-            }
+        /* 导航栏 */
+        .navbar {
+            position: fixed; top: 20px; right: 20px; z-index: 100;
+            background: var(--glass);
+            backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border); padding: 10px 20px;
+            border-radius: 100px; display: flex; gap: 15px; align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        .navbar a { color: var(--text-main); text-decoration: none; font-size: 0.9rem; font-weight: 600; transition: 0.2s; text-shadow: 0 1px 5px rgba(0, 0, 0, 0.2); }
+        .navbar a:hover { color: var(--primary); text-shadow: 0 0 10px var(--primary); }
+        .navbar .user-badge { background: var(--meta-bg); color: var(--text-main); border: 1px solid var(--glass-border); padding: 4px 12px; border-radius: 100px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); }
 
-            .navbar a {
-                color: var(--text-main);
-                text-decoration: none;
-                font-size: 0.9rem;
-                font-weight: 600;
-                transition: 0.2s;
-                text-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
-            }
+        .container { max-width: 1200px; margin: 0 auto; padding: 80px 20px 60px; backdrop-filter: blur(10px); }
+        .header { text-align: center; margin-bottom: 60px; color: var(--text-main); text-shadow: 0 2px 15px rgba(0, 0, 0, 0.3); }
+        .header h1 { font-size: 3.5rem; margin: 0; letter-spacing: -1.5px; font-weight: 800; }
+        .header p { font-size: 1.1rem; opacity: 0.9; margin-top: 10px; font-weight: 500; }
 
-            .navbar a:hover {
-                color: var(--primary);
-                text-shadow: 0 0 10px var(--primary);
-            }
+        .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 35px; }
 
-            .navbar .user-badge {
-                background: var(--meta-bg);
-                color: var(--text-main);
-                border: 1px solid var(--glass-border);
-                padding: 4px 12px;
-                border-radius: 100px;
-                font-size: 0.8rem;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            }
+        .card { background: var(--glass); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border: 1px solid var(--glass-border); border-radius: 24px; overflow: hidden; box-shadow: var(--card-shadow); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; animation: fadeInUp 0.6s ease backwards; }
+        .card:hover { transform: translateY(-12px) scale(1.02); box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 71, 87, 0.4); }
+        .cover-wrapper { position: relative; height: 360px; overflow: hidden; }
+        .cover { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease; }
+        .card:hover .cover { transform: scale(1.1); }
+        .status-badge { position: absolute; top: 15px; right: 15px; padding: 6px 16px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; backdrop-filter: blur(5px); z-index: 2; }
+        .content { padding: 25px; flex-grow: 1; display: flex; flex-direction: column; }
+        .title { font-size: 1.3rem; font-weight: 800; margin: 0 0 12px 0; cursor: pointer; transition: 0.3s; line-height: 1.3; color: var(--text-main); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
+        .title:hover { color: var(--primary); text-shadow: 0 0 15px var(--primary); }
+        .scores { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; font-size: 0.8rem; font-weight: 700; }
+        .score-pill { padding: 5px 10px; border-radius: 8px; background: var(--meta-bg); border: 1px solid var(--glass-border); color: var(--text-main); }
+        .meta-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
+        .meta-tag { font-size: 0.75rem; padding: 4px 10px; border-radius: 8px; background: var(--meta-bg); color: var(--text-main); font-weight: 600; border: 1px solid var(--glass-border); }
+        .review { font-size: 0.9rem; line-height: 1.6; flex-grow: 1; color: var(--text-main); opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; background: var(--review-bg); padding: 12px; border-radius: 12px; border-left: 3px solid var(--primary); }
 
-            /* 2. 布局容器 */
-            .container {
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 80px 20px 60px;
-                backdrop-filter: blur(10px);
-            }
+        .category-section { margin-bottom: 50px; }
+        .category-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 25px; color: var(--text-main); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px; user-select: none; transition: color 0.3s; }
+        .category-title::-webkit-details-marker { display: none; }
+        .category-title:hover { color: var(--primary); }
+        .category-title .count-badge { font-size: 1rem; background: var(--primary); color: white; padding: 4px 12px; border-radius: 100px; font-weight: 700; box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4); }
+        .category-title::before { content: '▶'; font-size: 1.2rem; transition: transform 0.3s; opacity: 0.7; }
+        .category-section[open] .category-title::before { transform: rotate(90deg); }
 
-            .header {
-                text-align: center;
-                margin-bottom: 60px;
-                color: var(--text-main);
-                text-shadow: 0 2px 15px rgba(0, 0, 0, 0.3);
-            }
+        dialog { border: none; border-radius: 30px; padding: 0; width: 90%; max-width: 800px; background: var(--modal-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px); border: 1px solid var(--glass-border); box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.4); color: var(--text-main); }
+        dialog::backdrop { background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); }
+        .modal-body { padding: 40px; position: relative; max-height: 85vh; overflow-y: auto; }
+        .modal-header-sec { display: flex; gap: 25px; margin-bottom: 30px; }
+        .modal-img { width: 180px; height: 260px; object-fit: cover; border-radius: 16px; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5); flex-shrink: 0; }
+        .modal-info-wrap { flex-grow: 1; }
+        .close-btn { position: absolute; top: 20px; right: 20px; background: var(--meta-bg); color: var(--text-main); border: 1px solid var(--glass-border); width: 40px; height: 40px; border-radius: 50%; font-size: 1.2rem; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); }
+        .close-btn:hover { background: var(--glass); }
+        .section-title { font-size: 1.1rem; font-weight: 700; margin: 20px 0 10px; border-bottom: 2px solid var(--glass-border); padding-bottom: 8px; color: var(--text-main); }
+        .score-item { background: var(--review-bg); padding: 12px 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--glass-border); }
+        .score-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; color: var(--text-main); }
+        .user-tag { background: #3dbbee; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
+        .owner-tag { background: var(--primary); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
+        .comment-item { background: var(--meta-bg); padding: 15px; border-radius: 12px; margin-bottom: 12px; position: relative; border: 1px solid var(--glass-border); }
+        .comment-meta { font-size: 0.8rem; color: var(--text-main); opacity: 0.8; margin-bottom: 6px; }
+        .comment-text { font-size: 0.95rem; line-height: 1.5; color: var(--text-main); }
+        .del-comment-btn { position: absolute; top: 15px; right: 15px; background: none; border: none; color: #ff4757; cursor: pointer; font-size: 0.8rem; }
+        .comment-form { margin-top: 20px; }
+        .comment-textarea { width: 100%; border: 1px solid var(--glass-border); border-radius: 12px; padding: 15px; font-family: inherit; resize: vertical; background: var(--input-bg); color: var(--text-main); }
+        .comment-textarea::placeholder { color: var(--text-main); opacity: 0.6; }
+        .comment-btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; }
+        .footer { text-align: center; margin-top: 80px; padding: 40px; color: var(--text-main); opacity: 0.7; }
+        @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        #loading-indicator { text-align: center; color: #aaa; padding: 20px; }
 
-            .header h1 {
-                font-size: 3.5rem;
-                margin: 0;
-                letter-spacing: -1.5px;
-                font-weight: 800;
-            }
-            .header p {
-                font-size: 1.1rem;
-                opacity: 0.9;
-                margin-top: 10px;
-                font-weight: 500;
-            }
+        /* 移动端适配 */
+        @media (max-width: 600px) {
+            .navbar { top: auto; bottom: 20px; right: 50%; left: auto; transform: translateX(50%); padding: 10px 15px; width: max-content; max-width: 90%; justify-content: center; flex-wrap: wrap; gap: 10px; }
+            .navbar a { font-size: 0.85rem; }
+            .container { padding: 40px 15px 90px; }
+            .header h1 { font-size: 2.2rem; }
+            .header { margin-bottom: 40px; }
+            .grid { grid-template-columns: repeat(auto-fill, minmax(100%, 1fr)); gap: 25px; }
+            .cover-wrapper { height: 240px; }
+            dialog { width: 95%; }
+            .modal-body { padding: 30px 20px; max-height: 90vh; }
+            .modal-header-sec { flex-direction: column; align-items: center; text-align: center; gap: 15px; margin-bottom: 20px; }
+            .modal-img { width: 130px; height: 180px; }
+            #m-title { font-size: 1.4rem; }
+            .close-btn { top: 10px; right: 10px; width: 32px; height: 32px; font-size: 1rem; }
+            .score-header { flex-direction: column; align-items: flex-start; gap: 5px; }
+        }
+    </style>
 
-            /* 3. 精美卡片设计 */
-            .grid {
-                display: grid;
-                grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-                gap: 35px;
-            }
-
-            .card {
-                background: var(--glass);
-                backdrop-filter: blur(25px);
-                -webkit-backdrop-filter: blur(25px);
-                border: 1px solid var(--glass-border);
-                border-radius: 24px;
-                overflow: hidden;
-                box-shadow: var(--card-shadow);
-                transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-                display: flex;
-                flex-direction: column;
-            }
-
-            .card:hover {
-                transform: translateY(-12px) scale(1.02);
-                box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6);
-                border: 1px solid rgba(255, 71, 87, 0.4);
-            }
-
-            .cover-wrapper {
-                position: relative;
-                height: 360px;
-                overflow: hidden;
-            }
-
-            .cover {
-                width: 100%;
-                height: 100%;
-                object-fit: cover;
-                transition: transform 0.6s ease;
-            }
-
-            .card:hover .cover {
-                transform: scale(1.1);
-            }
-
-            .status-badge {
-                position: absolute;
-                top: 15px;
-                right: 15px;
-                padding: 6px 16px;
-                border-radius: 100px;
-                font-size: 0.75rem;
-                font-weight: 700;
-                backdrop-filter: blur(5px);
-                z-index: 2;
-            }
-
-            .content {
-                padding: 25px;
-                flex-grow: 1;
-                display: flex;
-                flex-direction: column;
-            }
-
-            .title {
-                font-size: 1.3rem;
-                font-weight: 800;
-                margin: 0 0 12px 0;
-                cursor: pointer;
-                transition: 0.3s;
-                line-height: 1.3;
-                color: var(--text-main);
-                text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
-            }
-            .title:hover {
-                color: var(--primary);
-                text-shadow: 0 0 15px var(--primary);
-            }
-
-            .scores {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 10px;
-                margin-bottom: 12px;
-                font-size: 0.8rem;
-                font-weight: 700;
-            }
-            .score-pill {
-                padding: 5px 10px;
-                border-radius: 8px;
-                background: var(--meta-bg);
-                border: 1px solid var(--glass-border);
-                color: var(--text-main);
-            }
-
-            .meta-tags {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                margin-bottom: 15px;
-            }
-            .meta-tag {
-                font-size: 0.75rem;
-                padding: 4px 10px;
-                border-radius: 8px;
-                background: var(--meta-bg);
-                color: var(--text-main);
-                font-weight: 600;
-                border: 1px solid var(--glass-border);
-            }
-
-            .review {
-                font-size: 0.9rem;
-                line-height: 1.6;
-                flex-grow: 1;
-                color: var(--text-main);
-                opacity: 0.9;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
-                overflow: hidden;
-                background: var(--review-bg);
-                padding: 12px;
-                border-radius: 12px;
-                border-left: 3px solid var(--primary);
-            }
-
-            /* 类别折叠标题样式 */
-            .category-section {
-                margin-bottom: 50px;
-            }
-            .category-title {
-                font-size: 1.8rem;
-                font-weight: 800;
-                margin-bottom: 25px;
-                color: var(--text-main);
-                text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-                cursor: pointer;
-                list-style: none;
-                display: flex;
-                align-items: center;
-                gap: 15px;
-                border-bottom: 1px solid var(--glass-border);
-                padding-bottom: 15px;
-                user-select: none;
-                transition: color 0.3s;
-            }
-            .category-title::-webkit-details-marker {
-                display: none;
-            }
-            .category-title:hover {
-                color: var(--primary);
-            }
-            .category-title .count-badge {
-                font-size: 1rem;
-                background: var(--primary);
-                color: white;
-                padding: 4px 12px;
-                border-radius: 100px;
-                font-weight: 700;
-                box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4);
-            }
-            .category-title::before {
-                content: '▶';
-                font-size: 1.2rem;
-                transition: transform 0.3s;
-                opacity: 0.7;
-            }
-            .category-section[open] .category-title::before {
-                transform: rotate(90deg);
-            }
-
-            /* 4. 详情弹窗美化 */
-            dialog {
-                border: none;
-                border-radius: 30px;
-                padding: 0;
-                width: 90%;
-                max-width: 800px;
-                background: var(--modal-bg);
-                backdrop-filter: blur(35px);
-                -webkit-backdrop-filter: blur(35px);
-                border: 1px solid var(--glass-border);
-                box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.4);
-                color: var(--text-main);
-            }
-
-            dialog::backdrop {
-                background: rgba(0, 0, 0, 0.5);
-                backdrop-filter: blur(15px);
-                -webkit-backdrop-filter: blur(15px);
-            }
-
-            .modal-body {
-                padding: 40px;
-                position: relative;
-                max-height: 85vh;
-                overflow-y: auto;
-            }
-
-            .modal-header-sec {
-                display: flex;
-                gap: 25px;
-                margin-bottom: 30px;
-            }
-            .modal-img {
-                width: 180px;
-                height: 260px;
-                object-fit: cover;
-                border-radius: 16px;
-                box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
-                flex-shrink: 0;
-            }
-            .modal-info-wrap {
-                flex-grow: 1;
-            }
-
-            .close-btn {
-                position: absolute;
-                top: 20px;
-                right: 20px;
-                background: var(--meta-bg);
-                color: var(--text-main);
-                border: 1px solid var(--glass-border);
-                width: 40px;
-                height: 40px;
-                border-radius: 50%;
-                font-size: 1.2rem;
-                cursor: pointer;
-                transition: 0.2s;
-                box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-            }
-            .close-btn:hover {
-                background: var(--glass);
-            }
-
-            /* 评分和评论区样式 */
-            .section-title {
-                font-size: 1.1rem;
-                font-weight: 700;
-                margin: 20px 0 10px;
-                border-bottom: 2px solid var(--glass-border);
-                padding-bottom: 8px;
-                color: var(--text-main);
-            }
-
-            .score-item {
-                background: var(--review-bg);
-                padding: 12px 15px;
-                border-radius: 12px;
-                margin-bottom: 10px;
-                border: 1px solid var(--glass-border);
-            }
-            .score-header {
-                display: flex;
-                justify-content: space-between;
-                font-size: 0.85rem;
-                margin-bottom: 5px;
-                color: var(--text-main);
-            }
-            .user-tag {
-                background: #3dbbee;
-                color: white;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-size: 10px;
-                margin-left: 5px;
-            }
-            .owner-tag {
-                background: var(--primary);
-                color: white;
-                padding: 2px 6px;
-                border-radius: 4px;
-                font-size: 10px;
-                margin-left: 5px;
-            }
-
-            .comment-item {
-                background: var(--meta-bg);
-                padding: 15px;
-                border-radius: 12px;
-                margin-bottom: 12px;
-                position: relative;
-                border: 1px solid var(--glass-border);
-            }
-            .comment-meta {
-                font-size: 0.8rem;
-                color: var(--text-main);
-                opacity: 0.8;
-                margin-bottom: 6px;
-            }
-            .comment-text {
-                font-size: 0.95rem;
-                line-height: 1.5;
-                color: var(--text-main);
-            }
-            .del-comment-btn {
-                position: absolute;
-                top: 15px;
-                right: 15px;
-                background: none;
-                border: none;
-                color: #ff4757;
-                cursor: pointer;
-                font-size: 0.8rem;
-            }
-
-            .comment-form {
-                margin-top: 20px;
-            }
-            .comment-textarea {
-                width: 100%;
-                border: 1px solid var(--glass-border);
-                border-radius: 12px;
-                padding: 15px;
-                font-family: inherit;
-                resize: vertical;
-                background: var(--input-bg);
-                color: var(--text-main);
-            }
-            .comment-textarea::placeholder {
-                color: var(--text-main);
-                opacity: 0.6;
-            }
-            .comment-btn {
-                background: var(--primary);
-                color: white;
-                border: none;
-                padding: 10px 20px;
-                border-radius: 8px;
-                cursor: pointer;
-                font-weight: 600;
-                margin-top: 10px;
-            }
-
-            .footer {
-                text-align: center;
-                margin-top: 80px;
-                padding: 40px;
-                color: var(--text-main);
-                opacity: 0.7;
-            }
-
-            /* 渐现动画 */
-            .card {
-                animation: fadeInUp 0.6s ease backwards;
-            }
-            @keyframes fadeInUp {
-                from {
-                    opacity: 0;
-                    transform: translateY(30px);
-                }
-                to {
-                    opacity: 1;
-                    transform: translateY(0);
-                }
-            }
-
-            #loading-indicator {
-                text-align: center;
-                color: #aaa;
-                padding: 20px;
-            }
-
-            /* 移动端适配 */
-            @media (max-width: 600px) {
-                .navbar {
-                    top: auto;
-                    bottom: 20px;
-                    right: 50%;
-                    left: auto;
-                    transform: translateX(50%);
-                    padding: 10px 15px;
-                    width: max-content;
-                    max-width: 90%;
-                    justify-content: center;
-                    flex-wrap: wrap;
-                    gap: 10px;
-                }
-                .navbar a {
-                    font-size: 0.85rem;
-                }
-                .container {
-                    padding: 40px 15px 90px;
-                }
-                .header h1 {
-                    font-size: 2.2rem;
-                }
-                .header {
-                    margin-bottom: 40px;
-                }
-                .grid {
-                    grid-template-columns: repeat(auto-fill, minmax(100%, 1fr));
-                    gap: 25px;
-                }
-                .cover-wrapper {
-                    height: 240px;
-                }
-
-                dialog {
-                    width: 95%;
-                }
-                .modal-body {
-                    padding: 30px 20px;
-                    max-height: 90vh;
-                }
-                .modal-header-sec {
-                    flex-direction: column;
-                    align-items: center;
-                    text-align: center;
-                    gap: 15px;
-                    margin-bottom: 20px;
-                }
-                .modal-img {
-                    width: 130px;
-                    height: 180px;
-                }
-                #m-title {
-                    font-size: 1.4rem;
-                }
-                .close-btn {
-                    top: 10px;
-                    right: 10px;
-                    width: 32px;
-                    height: 32px;
-                    font-size: 1rem;
-                }
-                .score-header {
-                    flex-direction: column;
-                    align-items: flex-start;
-                    gap: 5px;
-                }
-            }
-        </style>
-        <script is:inline>
-            // 在最早就提取主题，避免闪烁
-            (function () {
-                const savedTheme = localStorage.getItem("site-theme") || "dark";
-                document.documentElement.setAttribute("data-theme", savedTheme);
-            })();
-        </script>
-    </head>
     <body style={`--bgUrl: url('${bgUrl}')`}>
         <div class="bg-overlay"></div>
-        <div class="navbar">
-            {
-                currentUser ? (
-                    <>
-                        <div class="user-badge">
-                            {currentUser.username} (
-                            {getRoleLabel(currentUser.role)})
-                        </div>
-                        {hasRole(currentUser, ["owner", "admin"]) && (
-                            <a href="/admin">管理后台</a>
-                        )}
-                        <a href="/logout">登出</a>
-                    </>
-                ) : (
-                    <>
-                        <a href="/login">登录</a>
-                        <a href="/register">注册</a>
-                    </>
-                )
-            }
-            <button
-                id="theme-toggle"
-                class="user-badge"
-                style="cursor:pointer; border:none; margin-left: 5px;"
-                >🌙 暗</button
-            >
-        </div>
+        <Navbar currentUser={currentUser} />
 
         <div class="container">
             <header class="header">
@@ -655,89 +202,21 @@ const getStatusTheme = (status) => {
                     { title: "已完结", icon: "✅", key: "已完结" },
                     { title: "想看", icon: "✨", key: "想看" },
                     { title: "弃番", icon: "🗑️", key: "弃番" }
-                ].map(category => {
-                    const list = animeList.filter(a => a.status === category.key);
+                ].map((category) => {
+                    const list = animeList.filter((a) => a.status === category.key);
                     if (list.length === 0) return null;
-
                     const isOpen = category.key === "正在追" || category.key === "想看";
 
                     return (
                         <details class="category-section" open={isOpen}>
                             <summary class="category-title">
-                                {category.icon} {category.title} <span class="count-badge">{list.length}</span>
+                                {category.icon} {category.title}{" "}
+                                <span class="count-badge">{list.length}</span>
                             </summary>
                             <div class="grid">
-                                {
-                                    list.map((anime, index) => {
-                                        const theme = getStatusTheme(anime.status);
-                                        return (
-                            <div
-                                class="card"
-                                style={`animation-delay: ${index * 0.1}s`}
-                            >
-                                <div class="cover-wrapper">
-                                    <span
-                                        class="status-badge"
-                                        style={`background: ${theme.bg}; color: ${theme.color}; border: 1px solid ${theme.color}`}
-                                    >
-                                        {anime.status}
-                                    </span>
-                                    <img
-                                        src={anime.image_url}
-                                        loading="lazy"
-                                        alt={anime.title}
-                                        class="cover"
-                                    />
-                                </div>
-                                <div class="content">
-                                    <h2
-                                        class="title"
-                                        data-id={anime.id}
-                                        data-title={anime.title}
-                                        data-img={anime.image_url}
-                                        data-score={anime.avg_score || "暂无"}
-                                        data-bgm={anime.bgm_score}
-                                        data-dir={anime.director || "未知"}
-                                        data-vas={anime.voice_actors || "未知"}
-                                        data-std={anime.studio || "未知"}
-                                        data-summary={anime.review || "暂无简介..."}
-                                    >
-                                        {anime.title}
-                                    </h2>
-                                    <div class="scores">
-                                        <span
-                                            class="score-pill"
-                                            style="color: #fd9644;"
-                                        >
-                                            ⭐ 平均分: {anime.avg_score || "-"}
-                                        </span>
-                                        <span
-                                            class="score-pill"
-                                            style="color: #a29bfe;"
-                                        >
-                                            📍 bgm: {anime.bgm_score}
-                                        </span>
-                                    </div>
-                                    <div class="meta-tags">
-                                        {anime.studio && (
-                                            <span class="meta-tag">
-                                                🏢 {anime.studio}
-                                            </span>
-                                        )}
-                                        {anime.director && (
-                                            <span class="meta-tag">
-                                                🎬 {anime.director}
-                                            </span>
-                                        )}
-                                    </div>
-                                    <p class="review">
-                                        {anime.latest_review || anime.review || "暂无评价..."}
-                                    </p>
-                                </div>
-                            </div>
-                                        );
-                                    })
-                                }
+                                {list.map((anime, index) => (
+                                    <AnimeCard anime={anime} theme={getStatusTheme(anime.status)} index={index} />
+                                ))}
                             </div>
                         </details>
                     );
@@ -749,258 +228,6 @@ const getStatusTheme = (status) => {
             </footer>
         </div>
 
-        <!-- 弹窗 -->
-        <dialog id="detail-modal">
-            <div class="modal-body">
-                <button class="close-btn" id="close-modal">✕</button>
-
-                <div class="modal-header-sec">
-                    <img id="m-img" class="modal-img" src="" alt="" />
-                    <div class="modal-info-wrap">
-                        <h2
-                            id="m-title"
-                            style="margin-bottom: 10px; font-size:1.8rem; color:var(--text-main); text-shadow:0 2px 10px rgba(0,0,0,0.2);"
-                        >
-                        </h2>
-                        <div
-                            id="m-info"
-                            style="margin-bottom: 15px; font-weight: bold; color: var(--primary);"
-                        >
-                        </div>
-                        <div
-                            id="m-meta"
-                            style="margin-bottom: 20px; font-size: 0.95rem; color: var(--text-main); line-height: 1.8; background: var(--meta-bg); padding: 15px; border-radius: 12px; border-left: 3px solid #74b9ff;"
-                        >
-                        </div>
-
-                        <div class="section-title">✨ 管理员独立评分</div>
-                        <div id="m-scores-list"></div>
-                    </div>
-                </div>
-
-                <div class="section-title">💬 讨论区</div>
-                <div id="loading-indicator" style="display:none;">
-                    加载中...
-                </div>
-                <div id="m-comments-list"></div>
-
-                <div class="comment-form">
-                    <textarea
-                        id="comment-input"
-                        class="comment-textarea"
-                        rows="3"
-                        placeholder={currentUser
-                            ? "写下你的评论..."
-                            : "请先登录后再发表评论"}
-                        disabled={!currentUser}></textarea>
-                    <button
-                        id="submit-comment"
-                        class="comment-btn"
-                        disabled={!currentUser}
-                    >
-                        {currentUser ? "发表评论" : "去登录"}
-                    </button>
-                </div>
-            </div>
-        </dialog>
-
-        <script define:vars={{ currentUser }}>
-            const modal = document.getElementById("detail-modal");
-            const closeBtn = document.getElementById("close-modal");
-            let currentAnimeId = null;
-
-            // 获取评论和评分数据
-            async function fetchComments(animeId) {
-                document.getElementById("loading-indicator").style.display =
-                    "block";
-                document.getElementById("m-scores-list").innerHTML = "";
-                document.getElementById("m-comments-list").innerHTML = "";
-
-                try {
-                    const res = await fetch(
-                        `/api/comments?anime_id=${animeId}`,
-                    );
-                    const data = await res.json();
-
-                    renderScores(data.scores);
-                    renderComments(data.comments, data.currentUser);
-                } catch (e) {
-                    console.error("加载失败", e);
-                } finally {
-                    document.getElementById("loading-indicator").style.display =
-                        "none";
-                }
-            }
-
-            function getRoleTagHTML(role) {
-                if (role === "owner")
-                    return `<span class="owner-tag">站长</span>`;
-                if (role === "admin")
-                    return `<span class="user-tag">管理员</span>`;
-                return "";
-            }
-
-            // 渲染管理员评分
-            function renderScores(scores) {
-                const container = document.getElementById("m-scores-list");
-                if (!scores || scores.length === 0) {
-                    container.innerHTML =
-                        '<div style="color:#999; font-size:0.9rem;">暂无评分</div>';
-                    return;
-                }
-
-                container.innerHTML = scores
-                    .map(
-                        (s) => `
-                <div class="score-item">
-                    <div class="score-header">
-                        <div><b>${s.username}</b> ${getRoleTagHTML(s.role)}</div>
-                        <div style="color: #fd9644; font-weight:bold;">⭐ ${s.score}</div>
-                    </div>
-                    ${s.review ? `<div style="font-size:0.9rem; margin-top:5px; color:#555;">${s.review}</div>` : ""}
-                </div>
-            `,
-                    )
-                    .join("");
-            }
-
-            // 渲染评论列表
-            function renderComments(comments, user) {
-                const container = document.getElementById("m-comments-list");
-                if (!comments || comments.length === 0) {
-                    container.innerHTML =
-                        '<div style="color:#999; font-size:0.9rem; margin-bottom: 20px;">还没有人评论，快来抢沙发！</div>';
-                    return;
-                }
-
-                container.innerHTML = comments
-                    .map((c) => {
-                        const canDelete =
-                            user &&
-                            (user.role === "owner" ||
-                                user.role === "admin" ||
-                                user.id === c.user_id);
-                        return `
-                <div class="comment-item">
-                    <div class="comment-meta">
-                        <b>${c.username}</b> ${getRoleTagHTML(c.role)}
-                        <span style="margin-left:10px; opacity:0.7;">${new Date(c.created_at + "Z").toLocaleString("zh-CN")}</span>
-                    </div>
-                    <div class="comment-text">${c.content}</div>
-                    ${canDelete ? `<button class="del-comment-btn" onclick="deleteComment(${c.id})">删除</button>` : ""}
-                </div>
-            `;
-                    })
-                    .join("");
-            }
-
-            // 提交评论
-            document
-                .getElementById("submit-comment")
-                .addEventListener("click", async () => {
-                    if (!currentUser) {
-                        window.location.href = "/login";
-                        return;
-                    }
-
-                    const input = document.getElementById("comment-input");
-                    const content = input.value.trim();
-                    if (!content) return alert("评论内容不能为空");
-
-                    try {
-                        const res = await fetch("/api/comments", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                anime_id: currentAnimeId,
-                                content,
-                            }),
-                        });
-
-                        const data = await res.json();
-                        if (res.ok) {
-                            input.value = "";
-                            fetchComments(currentAnimeId); // 刷新
-                        } else {
-                            alert(data.error || "评论失败");
-                        }
-                    } catch (e) {
-                        alert("网络错误");
-                    }
-                });
-
-            // 删除评论 (暴露给全局因为它在生成的 HTML 中被调用)
-            window.deleteComment = async function (commentId) {
-                if (!confirm("确定删除这条评论吗？")) return;
-                try {
-                    const res = await fetch("/api/comments", {
-                        method: "DELETE",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ comment_id: commentId }),
-                    });
-                    if (res.ok) {
-                        fetchComments(currentAnimeId);
-                    } else {
-                        const data = await res.json();
-                        alert(data.error || "删除失败");
-                    }
-                } catch (e) {
-                    alert("网络错误");
-                }
-            };
-
-            // 绑定点击事件打开弹窗
-            document.querySelectorAll(".title").forEach((btn) => {
-                btn.addEventListener("click", () => {
-                    const d = btn.dataset;
-                    currentAnimeId = d.id;
-                    document.getElementById("m-img").src = d.img;
-                    document.getElementById("m-title").innerText = d.title;
-                    document.getElementById("m-info").innerText =
-                        `综合平均分: ${d.score} / Bangumi: ${d.bgm}`;
-                    document.getElementById("m-meta").innerHTML = `
-                    <div style="font-size:0.9rem; margin-bottom:10px; opacity:0.85; border-bottom:1px solid var(--glass-border); padding-bottom:10px;"><i>${d.summary}</i></div>
-                    <div><b>🎬 制作：</b> ${d.std}</div>
-                    <div><b>🎥 导演：</b> ${d.dir}</div>
-                    <div><b>🎙️ 声优：</b> ${d.vas}</div>
-                `;
-
-                    // 重置容器并请求数据
-                    document.getElementById("m-scores-list").innerHTML = "";
-                    document.getElementById("m-comments-list").innerHTML = "";
-                    fetchComments(currentAnimeId);
-
-                    modal.showModal();
-                });
-            });
-
-            closeBtn.onclick = () => {
-                modal.close();
-                currentAnimeId = null;
-            };
-            modal.addEventListener(
-                "click",
-                (e) => e.target === modal && modal.close(),
-            );
-
-            // 主题切换逻辑
-            const themeBtn = document.getElementById("theme-toggle");
-
-            function updateThemeBtn(theme) {
-                themeBtn.innerText = theme === "dark" ? "🌙 暗" : "☀️ 明";
-            }
-
-            // 初始化按钮状态
-            updateThemeBtn(document.documentElement.getAttribute("data-theme"));
-
-            themeBtn.addEventListener("click", () => {
-                const current =
-                    document.documentElement.getAttribute("data-theme");
-                const next = current === "dark" ? "light" : "dark";
-                document.documentElement.setAttribute("data-theme", next);
-                localStorage.setItem("site-theme", next);
-                updateThemeBtn(next);
-            });
-        </script>
+        <DetailModal currentUser={currentUser} />
     </body>
-</html>
+</BaseLayout>

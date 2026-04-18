@@ -2,16 +2,57 @@
 // 认证与会话管理工具库
 
 /**
- * SHA-256 哈希密码
+/**
+ * 强密码哈希增强 (自动升级到 PBKDF2) 
  */
 export async function hashPassword(password) {
   const msgUint8 = new TextEncoder().encode(password);
   const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
-  return Array.from(new Uint8Array(hashBuffer))
-    .map(b => b.toString(16).padStart(2, '0'))
-    .join('');
+  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+export async function verifyPassword(password, storedHash) {
+  if (storedHash.includes(':')) {
+    const [saltHex, pbkdf2Hex] = storedHash.split(':');
+    const newHash = await generatePbkdf2Hash(password, saltHex);
+    return newHash === storedHash;
+  } else {
+    return (await hashPassword(password)) === storedHash;
+  }
+}
+
+export async function generatePbkdf2Hash(password, saltHexStr = null) {
+  const enc = new TextEncoder();
+  const passwordKey = await crypto.subtle.importKey(
+    'raw',
+    enc.encode(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveBits']
+  );
+
+  let saltArray;
+  if (saltHexStr) {
+    saltArray = new Uint8Array(saltHexStr.match(/.{1,2}/g).map(byte => parseInt(byte, 16)));
+  } else {
+    saltArray = crypto.getRandomValues(new Uint8Array(16));
+  }
+
+  const derivedBits = await crypto.subtle.deriveBits(
+    {
+      name: 'PBKDF2',
+      salt: saltArray,
+      iterations: 100000,
+      hash: 'SHA-256'
+    },
+    passwordKey,
+    256
+  );
+
+  const finalSaltHex = Array.from(saltArray).map(b => b.toString(16).padStart(2, '0')).join('');
+  const finalHashHex = Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
+  return ${finalSaltHex}:;
+}
 /**
  * 生成随机 Session Token (64 字符十六进制)
  */

@@ -1,7 +1,7 @@
 ---
 export const prerender = false;
 import { env } from "cloudflare:workers";
-import { hashPassword, createSession, setSessionCookie, getCurrentUser, checkVerificationCode } from "../lib/auth.js";
+import { generatePbkdf2Hash, createSession, setSessionCookie, getCurrentUser, checkVerificationCode } from "../lib/auth.js";
 
 const db = env.DB;
 
@@ -54,7 +54,7 @@ if (Astro.request.method === "POST") {
       if (!message) {
         let passwordHash = null;
         if (password && password.length >= 6) {
-          passwordHash = await hashPassword(password);
+          passwordHash = await generatePbkdf2Hash(password);
         }
 
         try {

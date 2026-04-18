@@ -1,0 +1,36 @@
+---
+import { getRoleLabel, hasRole } from "../lib/auth.js";
+export interface Props {
+    currentUser: any;
+}
+const { currentUser } = Astro.props;
+---
+<div class="navbar">
+    {
+        currentUser ? (
+            <>
+                <div class="user-badge">
+                    {currentUser.username} ({getRoleLabel(currentUser.role)})
+                </div>
+                {hasRole(currentUser, ["owner", "admin"]) && (
+                    <a href="/admin">管理后台</a>
+                )}
+                <a href="/logout">登出</a>
+            </>
+        ) : (
+            <>
+                <a href="/login">登录</a>
+                <a href="/register">注册</a>
+            </>
+        )
+    }
+    <button
+        id="theme-toggle"
+        class="user-badge"
+        aria-label="切换主题"
+        title="切换暗/亮色主题"
+        style="cursor:pointer; border:none; margin-left: 5px;"
+    >
+        🌙 暗
+    </button>
+</div>

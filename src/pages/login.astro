@@ -1,7 +1,7 @@
 ---
 export const prerender = false;
 import { env } from "cloudflare:workers";
-import { hashPassword, createSession, setSessionCookie, getCurrentUser, checkVerificationCode } from "../lib/auth.js";
+import { env } from "cloudflare:workers";
 
 const db = env.DB;
 
@@ -23,11 +23,15 @@ if (Astro.request.method === "POST") {
     if (!password) {
       message = "请输入密码";
     } else {
-      const passwordHash = await hashPassword(password);
-      const user = await db.prepare("SELECT * FROM users WHERE email = ? AND password_hash = ?").bind(email, passwordHash).first();
-      
-      if (user) {
+const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email).first();
+      if (user && await verifyPassword(password, user.password_hash)) {
+        if (!user.password_hash.includes(':')) {
+          const upgradedHash = await generatePbkdf2Hash(password);
+          await db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').bind(upgradedHash, user.id).run();
+        }
         const token = await createSession(db, user.id);
+        setSessionCookie(Astro.cookies, token);
+        return Astro.redirect('/');
         setSessionCookie(Astro.cookies, token);
         return Astro.redirect("/");
       } else {

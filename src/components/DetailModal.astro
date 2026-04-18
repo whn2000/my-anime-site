@@ -1,0 +1,198 @@
+---
+export interface Props {
+    currentUser: any;
+}
+const { currentUser } = Astro.props;
+---
+<dialog id="detail-modal">
+    <div class="modal-body">
+        <button class="close-btn" id="close-modal" aria-label="关闭" title="关闭">✕</button>
+
+        <div class="modal-header-sec">
+            <img id="m-img" class="modal-img" src="" alt="Anime Cover" />
+            <div class="modal-info-wrap">
+                <h2 id="m-title" style="margin-bottom: 10px; font-size:1.8rem; color:var(--text-main); text-shadow:0 2px 10px rgba(0,0,0,0.2);">
+                </h2>
+                <div id="m-info" style="margin-bottom: 15px; font-weight: bold; color: var(--primary);"></div>
+                <div id="m-meta" style="margin-bottom: 20px; font-size: 0.95rem; color: var(--text-main); line-height: 1.8; background: var(--meta-bg); padding: 15px; border-radius: 12px; border-left: 3px solid #74b9ff;"></div>
+
+                <div class="section-title">✨ 管理员独立评分</div>
+                <div id="m-scores-list"></div>
+            </div>
+        </div>
+
+        <div class="section-title">💬 讨论区</div>
+        <div id="loading-indicator" style="display:none;">加载中...</div>
+        <div id="m-comments-list"></div>
+
+        <div class="comment-form">
+            <textarea
+                id="comment-input"
+                class="comment-textarea"
+                rows="3"
+                placeholder={currentUser ? "写下你的评论..." : "请先登录后再发表评论"}
+                disabled={!currentUser}></textarea>
+            <button
+                id="submit-comment"
+                class="comment-btn"
+                disabled={!currentUser}
+            >
+                {currentUser ? "发表评论" : "去登录"}
+            </button>
+        </div>
+    </div>
+</dialog>
+
+<script is:inline define:vars={{ currentUser }}>
+    const modal = document.getElementById("detail-modal");
+    const closeBtn = document.getElementById("close-modal");
+    let currentAnimeId = null;
+
+    // 获取评论和评分数据
+    async function fetchComments(animeId) {
+        document.getElementById("loading-indicator").style.display = "block";
+        document.getElementById("m-scores-list").innerHTML = "";
+        document.getElementById("m-comments-list").innerHTML = "";
+
+        try {
+            const res = await fetch(`/api/comments?anime_id=${animeId}`);
+            const data = await res.json();
+            renderScores(data.scores);
+            renderComments(data.comments, data.currentUser);
+        } catch (e) {
+            console.error("加载失败", e);
+        } finally {
+            document.getElementById("loading-indicator").style.display = "none";
+        }
+    }
+
+    function getRoleTagHTML(role) {
+        if (role === "owner") return `<span class="owner-tag">站长</span>`;
+        if (role === "admin") return `<span class="user-tag">管理员</span>`;
+        return "";
+    }
+
+    function renderScores(scores) {
+        const container = document.getElementById("m-scores-list");
+        if (!scores || scores.length === 0) {
+            container.innerHTML = '<div style="color:#999; font-size:0.9rem;">暂无评分</div>';
+            return;
+        }
+        container.innerHTML = scores.map(s => `
+            <div class="score-item">
+                <div class="score-header">
+                    <div><b>${s.username}</b> ${getRoleTagHTML(s.role)}</div>
+                    <div style="color: #fd9644; font-weight:bold;">⭐ ${s.score}</div>
+                </div>
+                ${s.review ? `<div style="font-size:0.9rem; margin-top:5px; color:#555;">${s.review}</div>` : ""}
+            </div>
+        `).join("");
+    }
+
+    function renderComments(comments, user) {
+        const container = document.getElementById("m-comments-list");
+        if (!comments || comments.length === 0) {
+            container.innerHTML = '<div style="color:#999; font-size:0.9rem; margin-bottom: 20px;">还没有人评论，快来抢沙发！</div>';
+            return;
+        }
+
+        container.innerHTML = comments.map((c) => {
+            const canDelete = user && (user.role === "owner" || user.role === "admin" || user.id === c.user_id);
+            return `
+                <div class="comment-item">
+                    <div class="comment-meta">
+                        <b>${c.username}</b> ${getRoleTagHTML(c.role)}
+                        <span style="margin-left:10px; opacity:0.7;">${new Date(c.created_at + "Z").toLocaleString("zh-CN")}</span>
+                    </div>
+                    <div class="comment-text">${c.content}</div>
+                    ${canDelete ? `<button class="del-comment-btn" aria-label="删除评论" onclick="deleteComment(${c.id})">删除</button>` : ""}
+                </div>
+            `;
+        }).join("");
+    }
+
+    document.getElementById("submit-comment").addEventListener("click", async () => {
+        if (!currentUser) {
+            window.location.href = "/login";
+            return;
+        }
+
+        const input = document.getElementById("comment-input");
+        const content = input.value.trim();
+        if (!content) return alert("评论内容不能为空");
+
+        try {
+            const res = await fetch("/api/comments", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ anime_id: currentAnimeId, content }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+                input.value = "";
+                fetchComments(currentAnimeId);
+            } else {
+                alert(data.error || "评论失败");
+            }
+        } catch (e) {
+            alert("网络错误");
+        }
+    });
+
+    window.deleteComment = async function (commentId) {
+        if (!confirm("确定删除这条评论吗？")) return;
+        try {
+            const res = await fetch("/api/comments", {
+                method: "DELETE",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ comment_id: commentId }),
+            });
+            if (res.ok) {
+                fetchComments(currentAnimeId);
+            } else {
+                const data = await res.json();
+                alert(data.error || "删除失败");
+            }
+        } catch (e) {
+            alert("网络错误");
+        }
+    };
+
+    document.querySelectorAll(".title").forEach((btn) => {
+        btn.addEventListener("click", () => {
+            const d = btn.dataset;
+            currentAnimeId = d.id;
+            document.getElementById("m-img").src = d.img;
+            document.getElementById("m-title").innerText = d.title;
+            document.getElementById("m-info").innerText = `综合平均分: ${d.score} / Bangumi: ${d.bgm}`;
+            document.getElementById("m-meta").innerHTML = `
+                <div style="font-size:0.9rem; margin-bottom:10px; opacity:0.85; border-bottom:1px solid var(--glass-border); padding-bottom:10px;"><i>${d.summary}</i></div>
+                <div><b>🎬 制作：</b> ${d.std}</div>
+                <div><b>🎥 导演：</b> ${d.dir}</div>
+                <div><b>🎙️ 声优：</b> ${d.vas}</div>
+            `;
+            document.getElementById("m-scores-list").innerHTML = "";
+            document.getElementById("m-comments-list").innerHTML = "";
+            fetchComments(currentAnimeId);
+            modal.showModal();
+        });
+    });
+
+    closeBtn.onclick = () => {
+        modal.close();
+        currentAnimeId = null;
+    };
+    modal.addEventListener("click", (e) => e.target === modal && modal.close());
+
+    // 主题切换
+    const themeBtn = document.getElementById("theme-toggle");
+    function updateThemeBtn(theme) { themeBtn.innerText = theme === "dark" ? "🌙 暗" : "☀️ 明"; }
+    updateThemeBtn(document.documentElement.getAttribute("data-theme"));
+    themeBtn.addEventListener("click", () => {
+        const current = document.documentElement.getAttribute("data-theme");
+        const next = current === "dark" ? "light" : "dark";
+        document.documentElement.setAttribute("data-theme", next);
+        localStorage.setItem("site-theme", next);
+        updateThemeBtn(next);
+    });
+</script>

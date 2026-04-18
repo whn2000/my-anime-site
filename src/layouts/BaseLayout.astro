@@ -1,0 +1,42 @@
+---
+export interface Props {
+    title?: string;
+    description?: string;
+}
+
+const { 
+    title = 'MyAnimeList - 追番记录', 
+    description = '记录每一个心动的次元瞬间。在这里你可以探索高质量的番剧、查询 Bangumi 评分与获取详尽百科！' 
+} = Astro.props;
+---
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title}</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content={description} />
+    <meta name="keywords" content="动漫, 追番, Bangumi, 评分, MyAnimeList, 二次元的足迹" />
+    
+    <!-- OpenGraph / Social Meta Tags -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    
+    <!-- Preconnect to Google Fonts to speed up loading -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet" />
+    
+    <script is:inline>
+        // 早于 body 渲染提取主体，避免闪烁
+        (function () {
+            const savedTheme = localStorage.getItem("site-theme") || "dark";
+            document.documentElement.setAttribute("data-theme", savedTheme);
+        })();
+    </script>
+</head>
+<slot name="body-start" />
+<slot />
+</html>

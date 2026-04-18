@@ -1,0 +1,60 @@
+---
+export interface Props {
+    anime: any;
+    theme: { color: string; bg: string };
+    index: number;
+}
+
+const { anime, theme, index } = Astro.props;
+---
+<div class="card" style={`animation-delay: ${index * 0.1}s`}>
+    <div class="cover-wrapper">
+        <span
+            class="status-badge"
+            style={`background: ${theme.bg}; color: ${theme.color}; border: 1px solid ${theme.color}`}
+        >
+            {anime.status}
+        </span>
+        <img
+            src={anime.image_url}
+            loading="lazy"
+            alt={`Cover image for ${anime.title}`}
+            class="cover"
+        />
+    </div>
+    <div class="content">
+        <h2
+            class="title"
+            data-id={anime.id}
+            data-title={anime.title}
+            data-img={anime.image_url}
+            data-score={anime.avg_score || "暂无"}
+            data-bgm={anime.bgm_score}
+            data-dir={anime.director || "未知"}
+            data-vas={anime.voice_actors || "未知"}
+            data-std={anime.studio || "未知"}
+            data-summary={anime.review || "暂无简介..."}
+        >
+            {anime.title}
+        </h2>
+        <div class="scores">
+            <span class="score-pill" style="color: #fd9644;">
+                ⭐ 平均分: {anime.avg_score || "-"}
+            </span>
+            <span class="score-pill" style="color: #a29bfe;">
+                📍 bgm: {anime.bgm_score}
+            </span>
+        </div>
+        <div class="meta-tags">
+            {anime.studio && (
+                <span class="meta-tag">🏢 {anime.studio}</span>
+            )}
+            {anime.director && (
+                <span class="meta-tag">🎬 {anime.director}</span>
+            )}
+        </div>
+        <p class="review">
+            {anime.latest_review || anime.review || "暂无评价..."}
+        </p>
+    </div>
+</div>
