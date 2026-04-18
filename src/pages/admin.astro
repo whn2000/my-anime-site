@@ -108,6 +108,18 @@ if (Astro.request.method === "POST") {
       const animeId = data.get("id");
       await db.prepare("DELETE FROM anime_scores WHERE anime_id = ? AND user_id = ?").bind(animeId, user.id).run();
       message = "🗑️ 您的个人评分已删除";
+    } else if (action === 'batch_add') {
+        const rawData = data.get('batch_data');
+        const batchList = JSON.parse(rawData);
+        if (batchList && batchList.length > 0) {
+            const stmts = batchList.map(item => {
+                let score = item.bgm_score || 0;
+                return db.prepare("INSERT INTO anime (title, bgm_score, status, image_url, added_by, director, voice_actors, studio) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+                    .bind(item.title, item.bgm_score, item.status, item.image_url, user.id, item.director, item.voice_actors, item.studio);
+            });
+            await db.batch(stmts);
+            message = "✅ 批量导入成功！";
+        }
     }
   } catch (e) {
     message = "❌ 数据库错误：" + e.message;
@@ -263,6 +275,33 @@ const animeList = rawAnimeList.map(a => ({
     </div>
 
     {user.role === 'owner' && (
+      <div class="box" style="margin-top: 25px; border-left: 4px solid #3dbbee;">
+        <h3 style="margin-top:0;">✨ 批量智能扫雷（自动全盘抓入）</h3>
+        <p style="font-size:12px; color:#666; margin-top:-10px;">如果手动一部部搜太麻烦，请在下方贴入您想补充的番剧名称（每行一个）。系统将全自动连入 Bangumi 查找导演、声优、图片和详情，打包全拿！</p>
+        <textarea id="batch-input" rows="5" placeholder="魔法少女小圆
+某科学的超电磁炮
+葬送的芙莉莲" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; resize:vertical; box-sizing:border-box;"></textarea>
+        
+        <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
+            <select id="batch-status" style="padding:10px; border-radius:8px; border:1px solid #ddd; outline:none; cursor:pointer;">
+                <option value="已完结">导入状态默认：已完结</option>
+                <option value="正在追">导入状态默认：正在追</option>
+                <option value="想看">导入状态默认：想看</option>
+            </select>
+            <button type="button" class="btn-blue" onclick="startBatch()">🚀 开始全自动查档...</button>
+        </div>
+        
+        <div id="batch-progress" style="margin-top:15px; font-size:12px; font-family:monospace; background:#fafafa; padding:10px; border-radius:8px; max-height:200px; overflow-y:auto; border:1px solid #eee; display:none;"></div>
+        
+        <form method="POST" id="batch-form" style="display:none; margin-top:15px; margin-bottom:0px;">
+            <input type="hidden" name="action" value="batch_add" />
+            <input type="hidden" name="batch_data" id="batch-data-input" />
+            <button type="submit" class="btn-blue" style="background:#52c41a; width:100%; font-size:16px;">💾 获取完毕！点击将上方抓取的番剧一键写入数据库！</button>
+        </form>
+      </div>
+    )}
+
+    {user.role === 'owner' && (
       <div class="box" style="margin-top: 25px; border: 1px solid #eef9ff;">
           <h3 style="margin-top:0;">🎨 全站外观设置</h3>
           <form method="POST">
@@ -393,6 +432,87 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('submit-btn').style.background = "#3dbbee";
             document.getElementById('cancel-btn').style.display = "none";
             document.getElementById('main-form').reset();
+        }
+
+        async function startBatch() {
+            const lines = document.getElementById('batch-input').value.split('\n').map(l => l.trim()).filter(l => l);
+            if (lines.length === 0) return alert("请先输入需要查询的动漫名单");
+            
+            const status = document.getElementById('batch-status').value;
+            const prog = document.getElementById('batch-progress');
+            prog.style.display = 'block';
+            prog.innerHTML = '';
+            document.getElementById('batch-form').style.display = 'none';
+            const batchList = [];
+            
+            for (let i = 0; i < lines.length; i++) {
+                const title = lines[i];
+                prog.innerHTML += `<div style="color:#555;">⏳ [${i+1}/${lines.length}] 正在深度搜索：<b>${title}</b>...</div>`;
+                prog.scrollTop = prog.scrollHeight;
+                
+                try {
+                    const res = await fetch(`https://api.bgm.tv/search/subject/${encodeURIComponent(title)}?type=2&responseGroup=large`);
+                    const result = await res.json();
+                    
+                    if (result.list && result.list.length > 0) {
+                        const bgm = result.list[0];
+                        // Secondary queries for depth
+                        let dir = '', std = '', vas = '';
+                        try {
+                            const pRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgm.id}/persons`);
+                            const persons = await pRes.json();
+                            if(Array.isArray(persons)){
+                                const d = persons.find(p => p.relation === '导演');
+                                if(d) dir = d.name;
+                                const s = persons.find(p => p.relation === '动画制作');
+                                if(s) std = s.name;
+                            }
+                        } catch(e){}
+                        
+                        try {
+                            const cRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgm.id}/characters`);
+                            const chars = await cRes.json();
+                            if(Array.isArray(chars)){
+                                const actorNames = [];
+                                for(let c of chars) {
+                                    if(c.actors && c.actors.length > 0) actorNames.push(c.actors[0].name);
+                                    if(actorNames.length >= 3) break;
+                                }
+                                vas = actorNames.join(', ');
+                            }
+                        } catch(e){}
+                        
+                        const item = {
+                            title: bgm.name_cn || bgm.name,
+                            bgm_score: (bgm.rating && bgm.rating.score) ? bgm.rating.score : 0,
+                            image_url: bgm.images ? bgm.images.large || bgm.images.common : '',
+                            review: bgm.summary ? bgm.summary.substring(0, 150) + "..." : "",
+                            status: status,
+                            director: dir,
+                            studio: std,
+                            voice_actors: vas
+                        };
+                        batchList.push(item);
+                        prog.innerHTML += `<div style="color:#52c41a; margin-bottom:8px;">✅ 抓取成功: <b>${item.title}</b> (Bgm: ${item.bgm_score}) 导演: ${dir}</div>`;
+                    } else {
+                        prog.innerHTML += `<div style="color:#f5222d; margin-bottom:8px;">❌ 数据库未收录此作品: ${title}</div>`;
+                    }
+                } catch(e) {
+                    prog.innerHTML += `<div style="color:#f5222d; margin-bottom:8px;">❌ 网络中断，跳过抓取: ${title}</div>`;
+                }
+                
+                prog.scrollTop = prog.scrollHeight;
+                // 防止封IP，严格限速延迟
+                await new Promise(r => setTimeout(r, 600)); 
+            }
+            
+            prog.innerHTML += `<div style="color:#1890ff; margin-top:10px;">🎉 全部处理完毕！共组装好 ${batchList.length} 条记录。</div>`;
+            prog.scrollTop = prog.scrollHeight;
+            
+            if(batchList.length > 0) {
+                document.getElementById('batch-data-input').value = JSON.stringify(batchList);
+                document.getElementById('batch-form').style.display = 'block';
+            }
         }
     </script>
 </body>
