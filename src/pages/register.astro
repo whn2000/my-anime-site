@@ -1,0 +1,62 @@
+---
+// src/pages/register.astro
+export const prerender = false;
+import { env } from "cloudflare:workers";
+
+const db = env.DB;
+// 1. 从 URL 获取邀请码：?code=xxxx
+const inviteCode = Astro.url.searchParams.get('code') || "";
+
+let message = "";
+if (Astro.request.method === "POST") {
+    const data = await Astro.request.formData();
+    const user = data.get("username");
+    const pwd = data.get("password");
+    const submittedCode = data.get("invite_code"); // 用户也可以手动填
+
+    // 2. 校验邀请码权限
+    let finalRole = "user";
+    if (submittedCode) {
+        const inv = await db.prepare("SELECT * FROM invitations WHERE code = ? AND is_used = 0").bind(submittedCode).first();
+        if (inv) {
+            finalRole = inv.role;
+        } else {
+            message = "⚠️ 邀请码无效或已被使用，您将以普通用户身份注册。";
+        }
+    }
+
+    // 3. 密码哈希处理
+    const msgUint8 = new TextEncoder().encode(pwd);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', msgUint8);
+    const hash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+    try {
+        // 插入用户
+        await db.prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)").bind(user, hash, finalRole).run();
+        
+        // 4. 如果使用了邀请码，标记为已失效
+        if (finalRole !== "user") {
+            await db.prepare("UPDATE invitations SET is_used = 1 WHERE code = ?").bind(submittedCode).run();
+        }
+        
+        message = `🎉 注册成功！您的身份是：${finalRole === 'admin' ? '管理员' : '普通用户'}`;
+    } catch (e) {
+        message = "❌ 注册失败：用户名已存在。";
+    }
+}
+---
+<html lang="zh-CN">
+<body style="font-family: sans-serif; background: #f0f2f5; display: flex; justify-content: center; align-items: center; height: 100vh;">
+    <form method="POST" style="background: white; padding: 40px; border-radius: 20px; width: 320px; box-shadow: 0 10px 25px rgba(0,0,0,0.05);">
+        <h2>用户注册</h2>
+        <input type="text" name="username" placeholder="用户名" required style="width:100%; padding:12px; margin:10px 0; border:1px solid #ddd; border-radius:8px;" />
+        <input type="password" name="password" placeholder="密码" required style="width:100%; padding:12px; margin:10px 0; border:1px solid #ddd; border-radius:8px;" />
+        
+        <label style="font-size:12px; color:#999;">邀请码 (选填)</label>
+        <input type="text" name="invite_code" value={inviteCode} placeholder="普通注册无需填写" style="width:100%; padding:12px; margin:5px 0 15px 0; border:1px solid #ddd; border-radius:8px; background: #f9f9f9;" />
+        
+        <button type="submit" style="width: 100%; padding: 12px; background: #f09199; color: white; border: none; border-radius: 8px; cursor: pointer;">提交注册</button>
+        {message && <p style="color: #3dbbee; text-align: center; margin-top: 15px;">{message}</p>}
+    </form>
+</body>
+</html>
