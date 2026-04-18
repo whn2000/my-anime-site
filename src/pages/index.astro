@@ -297,6 +297,51 @@ const getStatusTheme = (status) => {
                 border-left: 3px solid var(--primary);
             }
 
+            /* 类别折叠标题样式 */
+            .category-section {
+                margin-bottom: 50px;
+            }
+            .category-title {
+                font-size: 1.8rem;
+                font-weight: 800;
+                margin-bottom: 25px;
+                color: var(--text-main);
+                text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                cursor: pointer;
+                list-style: none;
+                display: flex;
+                align-items: center;
+                gap: 15px;
+                border-bottom: 1px solid var(--glass-border);
+                padding-bottom: 15px;
+                user-select: none;
+                transition: color 0.3s;
+            }
+            .category-title::-webkit-details-marker {
+                display: none;
+            }
+            .category-title:hover {
+                color: var(--primary);
+            }
+            .category-title .count-badge {
+                font-size: 1rem;
+                background: var(--primary);
+                color: white;
+                padding: 4px 12px;
+                border-radius: 100px;
+                font-weight: 700;
+                box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4);
+            }
+            .category-title::before {
+                content: '▶';
+                font-size: 1.2rem;
+                transition: transform 0.3s;
+                opacity: 0.7;
+            }
+            .category-section[open] .category-title::before {
+                transform: rotate(90deg);
+            }
+
             /* 4. 详情弹窗美化 */
             dialog {
                 border: none;
@@ -602,11 +647,28 @@ const getStatusTheme = (status) => {
                 <p>✨ 记录每一个心动的次元瞬间 ✨</p>
             </header>
 
-            <div class="grid">
-                {
-                    animeList.map((anime, index) => {
-                        const theme = getStatusTheme(anime.status);
-                        return (
+            {
+                [
+                    { title: "正在追", icon: "🚀", key: "正在追" },
+                    { title: "已完结", icon: "✅", key: "已完结" },
+                    { title: "想看", icon: "✨", key: "想看" },
+                    { title: "弃番", icon: "🗑️", key: "弃番" }
+                ].map(category => {
+                    const list = animeList.filter(a => a.status === category.key);
+                    if (list.length === 0) return null;
+
+                    const isOpen = category.key === "正在追" || category.key === "想看";
+
+                    return (
+                        <details class="category-section" open={isOpen}>
+                            <summary class="category-title">
+                                {category.icon} {category.title} <span class="count-badge">{list.length}</span>
+                            </summary>
+                            <div class="grid">
+                                {
+                                    list.map((anime, index) => {
+                                        const theme = getStatusTheme(anime.status);
+                                        return (
                             <div
                                 class="card"
                                 style={`animation-delay: ${index * 0.1}s`}
@@ -671,10 +733,14 @@ const getStatusTheme = (status) => {
                                     </p>
                                 </div>
                             </div>
-                        );
-                    })
-                }
-            </div>
+                                        );
+                                    })
+                                }
+                            </div>
+                        </details>
+                    );
+                })
+            }
 
             <footer class="footer">
                 Powered by <b>Astro</b> & <b>Cloudflare D1</b> | 2026
