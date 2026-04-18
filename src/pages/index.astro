@@ -197,7 +197,7 @@ const getStatusTheme = (status) => {
                             >{anime.title}</h2>
                             <div class="scores">
                                 <span class="score-pill" style="color: #fd9644;">⭐ 我评: {anime.score}</span>
-                                <span class="score-pill" style="color: #a29bfe;">📍 Bgm: {anime.bgm_score}</span>
+                                <span class="score-pill" style="color: #a29bfe;">📍 AniList: {anime.bgm_score}</span>
                             </div>
                             <p class="review">{anime.review}</p>
                         </div>
@@ -230,7 +230,7 @@ const getStatusTheme = (status) => {
                 const d = btn.dataset;
                 document.getElementById('m-img').src = d.img;
                 document.getElementById('m-title').innerText = d.title;
-                document.getElementById('m-info').innerText = `⭐ 评分: ${d.score} / Bangumi: ${d.bgm}`;
+                document.getElementById('m-info').innerText = `⭐ 评分: ${d.score} / AniList: ${d.bgm}`;
                 document.getElementById('m-review').innerText = d.review || "暂无评论";
                 modal.showModal();
             });
