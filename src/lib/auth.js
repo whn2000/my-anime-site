@@ -35,6 +35,59 @@ export function generateInviteCode() {
 }
 
 /**
+ * 生成 6 位纯数字验证码
+ */
+export function generateVerifyCode() {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+/**
+ * 通过 Resend API 发送邮件 (Cloudflare Workers 环境)
+ */
+export async function sendEmailWithResend(apiKey, to, subject, html) {
+  if (!apiKey) throw new Error("RESEND_API_KEY is not configured.");
+  
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: 'onboarding@resend.dev', // Resend 测试限制：必须用这个发件人
+      to: [to],
+      subject: subject,
+      html: html
+    })
+  });
+
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data.message || '邮件发送失败');
+  }
+  return data;
+}
+
+/**
+ * 校验邮箱验证码
+ * @param {D1Database} db 
+ * @param {string} email 
+ * @param {string} code 
+ * @param {string} purpose 'register' | 'login' | 'reset'
+ */
+export async function checkVerificationCode(db, email, code, purpose) {
+  const record = await db.prepare(
+    "SELECT * FROM verification_codes WHERE email = ? AND code = ? AND purpose = ? AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"
+  ).bind(email, code, purpose).first();
+
+  if (!record) return false;
+
+  // 验证码验证成功后，立即让它作废，防止暴力重用
+  await db.prepare("DELETE FROM verification_codes WHERE id = ?").bind(record.id).run();
+  return true;
+}
+
+/**
  * 创建会话 - 在 DB 中插入 session 记录，返回 token
  * @param {D1Database} db
  * @param {number} userId
@@ -42,7 +95,6 @@ export function generateInviteCode() {
  */
 export async function createSession(db, userId) {
   const token = generateToken();
-  // 7 天过期
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
   await db.prepare(
     "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)"
@@ -54,14 +106,14 @@ export async function createSession(db, userId) {
  * 从 Cookie 获取当前登录用户
  * @param {D1Database} db
  * @param {import('astro').AstroCookies} cookies
- * @returns {Promise<{id: number, username: string, role: string} | null>}
+ * @returns {Promise<{id: number, email: string, username: string, role: string} | null>}
  */
 export async function getCurrentUser(db, cookies) {
   const token = cookies.get('session_token')?.value;
   if (!token) return null;
 
   const row = await db.prepare(`
-    SELECT u.id, u.username, u.role
+    SELECT u.id, u.email, u.username, u.role
     FROM sessions s
     JOIN users u ON s.user_id = u.id
     WHERE s.token = ? AND s.expires_at > datetime('now')
@@ -71,7 +123,7 @@ export async function getCurrentUser(db, cookies) {
 }
 
 /**
- * 销毁会话（登出）
+ * 销毁会话
  */
 export async function destroySession(db, cookies) {
   const token = cookies.get('session_token')?.value;
@@ -89,7 +141,7 @@ export function setSessionCookie(cookies, token) {
     httpOnly: true,
     secure: true,
     sameSite: 'lax',
-    maxAge: 7 * 24 * 60 * 60, // 7 天
+    maxAge: 7 * 24 * 60 * 60,
   });
 }
 
@@ -102,9 +154,6 @@ export function clearSessionCookie(cookies) {
 
 /**
  * 检查用户是否有指定角色
- * @param {object|null} user
- * @param {string[]} allowedRoles
- * @returns {boolean}
  */
 export function hasRole(user, allowedRoles) {
   if (!user) return false;

@@ -1,91 +1,79 @@
 ---
 export const prerender = false;
 import { env } from "cloudflare:workers";
-import { hashPassword, createSession, setSessionCookie, getCurrentUser, getRoleLabel } from "../lib/auth.js";
+import { hashPassword, createSession, setSessionCookie, getCurrentUser, checkVerificationCode } from "../lib/auth.js";
 
 const db = env.DB;
 
-// 如果已登录，直接跳转首页
 const existingUser = await getCurrentUser(db, Astro.cookies);
-if (existingUser) {
-  return Astro.redirect("/");
-}
+if (existingUser) return Astro.redirect("/");
 
-// 从 URL 获取邀请码
 const inviteCode = Astro.url.searchParams.get('code') || "";
-
 let message = "";
 let messageType = "error";
+let submittedEmail = "";
+let submittedUsername = "";
 
 if (Astro.request.method === "POST") {
   const data = await Astro.request.formData();
+  const email = data.get("email")?.toString().trim();
   const username = data.get("username")?.toString().trim();
   const password = data.get("password")?.toString();
-  const confirmPassword = data.get("confirm_password")?.toString();
-  const submittedCode = data.get("invite_code")?.toString().trim();
+  const verifyCode = data.get("verify_code")?.toString().trim();
+  const submittedInviteCode = data.get("invite_code")?.toString().trim();
 
-  if (!username || !password) {
-    message = "请填写用户名和密码";
-  } else if (username.length < 2 || username.length > 20) {
-    message = "用户名长度应为 2-20 个字符";
-  } else if (password.length < 6) {
-    message = "密码长度至少 6 个字符";
-  } else if (password !== confirmPassword) {
-    message = "两次密码输入不一致";
+  submittedEmail = email;
+  submittedUsername = username;
+
+  if (!email || !username || !verifyCode) {
+    message = "请填写必填项（邮箱、昵称、验证码）";
+  } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    message = "邮箱格式不正确";
   } else {
-    // 检查用户名是否已存在
-    const existingUser = await db.prepare(
-      "SELECT id FROM users WHERE username = ?"
-    ).bind(username).first();
-
-    if (existingUser) {
-      message = "该用户名已被注册";
+    // 校验邮箱验证码，通过 checkVerificationCode 会自动销毁验证码
+    const isCodeValid = await checkVerificationCode(db, email, verifyCode, 'register');
+    
+    if (!isCodeValid) {
+      message = "验证码错误或已过期";
     } else {
-      // 确定角色
+      // 验证码正确，继续注册流程
       let finalRole = "user";
-
-      // 检查是否是第一个用户 → 自动成为站长
+      
       const userCount = await db.prepare("SELECT COUNT(*) as cnt FROM users").first();
       if (userCount.cnt === 0) {
         finalRole = "owner";
-      } else if (submittedCode) {
-        // 校验邀请码
-        const inv = await db.prepare(
-          "SELECT * FROM invitations WHERE code = ? AND is_used = 0"
-        ).bind(submittedCode).first();
-
+      } else if (submittedInviteCode) {
+        const inv = await db.prepare("SELECT * FROM invitations WHERE code = ? AND is_used = 0").bind(submittedInviteCode).first();
         if (inv) {
-          finalRole = inv.role; // 通常是 'admin'
+          finalRole = inv.role;
         } else {
-          message = "⚠️ 邀请码无效或已被使用";
+          message = "⚠️ 管理员邀请码无效或已被使用，您此次无法注册为管理员。如果想注册纯用户，请清空邀请码。";
         }
       }
 
       if (!message) {
-        const passwordHash = await hashPassword(password);
+        let passwordHash = null;
+        if (password && password.length >= 6) {
+          passwordHash = await hashPassword(password);
+        }
 
         try {
-          // 插入用户
           const result = await db.prepare(
-            "INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)"
-          ).bind(username, passwordHash, finalRole).run();
+            "INSERT INTO users (email, username, password_hash, role) VALUES (?, ?, ?, ?)"
+          ).bind(email, username, passwordHash, finalRole).run();
 
           const userId = result.meta.last_row_id;
 
-          // 如果使用了有效邀请码，标记为已使用
-          if (submittedCode && finalRole !== "user") {
-            await db.prepare(
-              "UPDATE invitations SET is_used = 1, used_by = ? WHERE code = ?"
-            ).bind(username, submittedCode).run();
+          if (submittedInviteCode && finalRole !== "user") {
+            await db.prepare("UPDATE invitations SET is_used = 1, used_by = ? WHERE code = ?").bind(username, submittedInviteCode).run();
           }
 
-          // 自动登录：创建 Session
           const token = await createSession(db, userId);
           setSessionCookie(Astro.cookies, token);
 
           return Astro.redirect("/");
         } catch (e) {
-          message = "❌ 注册失败：" + e.message;
+          message = "注册失败：该邮箱可能已被注册。";
         }
       }
     }
@@ -100,181 +88,33 @@ if (Astro.request.method === "POST") {
     <title>注册 - MyAnimeList</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
+        /* 复用登录/注册公共样式 */
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-            background-size: 400% 400%;
-            animation: gradientBG 15s ease infinite;
-            padding: 20px;
-        }
-
-        @keyframes gradientBG {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        .auth-card {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 28px;
-            padding: 45px 40px;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
-            animation: slideUp 0.6s ease;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .auth-header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab); background-size: 400% 400%; animation: gradientBG 15s ease infinite; padding: 20px; }
+        @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .auth-card { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 28px; padding: 45px 40px; width: 100%; max-width: 420px; box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15); animation: slideUp 0.6s ease; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .auth-header { text-align: center; margin-bottom: 25px; }
         .auth-header .logo { font-size: 2.5rem; margin-bottom: 8px; }
         .auth-header h1 { font-size: 1.6rem; color: #2d3436; font-weight: 700; margin-bottom: 6px; }
         .auth-header p { font-size: 0.9rem; color: #636e72; }
-
-        .form-group {
-            margin-bottom: 18px;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #636e72;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 14px 18px;
-            border: 2px solid #e9ecef;
-            border-radius: 14px;
-            font-size: 0.95rem;
-            font-family: inherit;
-            transition: all 0.3s;
-            background: rgba(255, 255, 255, 0.8);
-            outline: none;
-        }
-
-        .form-group input:focus {
-            border-color: #f09199;
-            box-shadow: 0 0 0 4px rgba(240, 145, 153, 0.15);
-        }
-
-        .form-group .hint {
-            font-size: 0.75rem;
-            color: #b2bec3;
-            margin-top: 5px;
-        }
-
-        .invite-section {
-            background: rgba(240, 145, 153, 0.08);
-            border: 1px dashed rgba(240, 145, 153, 0.3);
-            border-radius: 14px;
-            padding: 15px;
-            margin-bottom: 18px;
-        }
-
-        .invite-section label {
-            color: #e73c7e;
-        }
-
-        .submit-btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #23a6d5, #23d5ab);
-            color: white;
-            border: none;
-            border-radius: 14px;
-            font-size: 1rem;
-            font-weight: 700;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 5px;
-            letter-spacing: 0.5px;
-        }
-
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(35, 166, 213, 0.35);
-        }
-
-        .submit-btn:active { transform: translateY(0); }
-
-        .message {
-            text-align: center;
-            padding: 12px;
-            border-radius: 12px;
-            margin-bottom: 18px;
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
-
-        .message.error { background: rgba(214, 48, 49, 0.1); color: #d63031; }
-        .message.success { background: rgba(0, 184, 148, 0.1); color: #00b894; }
-
-        .auth-footer {
-            text-align: center;
-            margin-top: 22px;
-            font-size: 0.85rem;
-            color: #636e72;
-        }
-
-        .auth-footer a {
-            color: #e73c7e;
-            text-decoration: none;
-            font-weight: 600;
-            transition: 0.2s;
-        }
-
-        .auth-footer a:hover { color: #f09199; }
-
-        .back-link {
-            display: block;
-            text-align: center;
-            margin-top: 18px;
-            font-size: 0.8rem;
-            color: #b2bec3;
-            text-decoration: none;
-            transition: 0.2s;
-        }
-
-        .back-link:hover { color: #636e72; }
-
+        .form-group { margin-bottom: 18px; position: relative; }
+        .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: #636e72; margin-bottom: 8px; }
+        .form-group input { width: 100%; padding: 14px 18px; border: 2px solid #e9ecef; border-radius: 14px; font-size: 0.95rem; font-family: inherit; transition: all 0.3s; background: rgba(255, 255, 255, 0.8); outline: none; }
+        .form-group input:focus { border-color: #f09199; box-shadow: 0 0 0 4px rgba(240, 145, 153, 0.15); }
+        .send-code-btn { position: absolute; right: 5px; top: 31px; padding: 8px 12px; background: #e9ecef; color: #2d3436; border: none; border-radius: 10px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
+        .send-code-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #23a6d5, #23d5ab); color: white; border: none; border-radius: 14px; font-size: 1rem; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.3s; margin-top: 5px; }
+        .message { text-align: center; padding: 12px; border-radius: 12px; margin-bottom: 18px; font-size: 0.85rem; font-weight: 500; background: rgba(214, 48, 49, 0.1); color: #d63031; }
+        .auth-footer { text-align: center; margin-top: 22px; font-size: 0.85rem; color: #636e72; }
+        .auth-footer a { color: #e73c7e; text-decoration: none; font-weight: 600; }
+        .code-input-wrapper { display: flex; gap: 10px; }
+        .code-input-wrapper input { flex: 1; }
         @media (prefers-color-scheme: dark) {
-            .auth-card {
-                background: rgba(30, 30, 30, 0.9);
-                border-color: rgba(255, 255, 255, 0.1);
-            }
+            .auth-card { background: rgba(30, 30, 30, 0.9); border-color: rgba(255, 255, 255, 0.1); }
             .auth-header h1 { color: #f5f5f7; }
             .auth-header p, .form-group label { color: #a0a0a0; }
-            .form-group input {
-                background: rgba(50, 50, 50, 0.8);
-                border-color: rgba(255, 255, 255, 0.1);
-                color: #f5f5f7;
-            }
-            .invite-section {
-                background: rgba(240, 145, 153, 0.05);
-                border-color: rgba(240, 145, 153, 0.2);
-            }
-            .auth-footer { color: #a0a0a0; }
+            .form-group input { background: rgba(50, 50, 50, 0.8); border-color: rgba(255, 255, 255, 0.1); color: #f5f5f7; }
         }
     </style>
 </head>
@@ -283,43 +123,89 @@ if (Astro.request.method === "POST") {
         <div class="auth-header">
             <div class="logo">✨</div>
             <h1>加入我们</h1>
-            <p>创建账号，开始你的追番之旅</p>
+            <p>通过邮箱创建你的追番账号</p>
         </div>
 
-        {message && <div class={`message ${messageType}`}>{message}</div>}
+        {message && <div class="message">{message}</div>}
 
-        <form method="POST">
+        <form method="POST" id="register-form">
             <div class="form-group">
-                <label>用户名</label>
-                <input type="text" name="username" placeholder="2-20 个字符" required minlength="2" maxlength="20" autocomplete="username" />
+                <label>电子邮箱</label>
+                <input type="email" id="email" name="email" value={submittedEmail} placeholder="输入你的邮箱" required autocomplete="email" />
             </div>
 
             <div class="form-group">
-                <label>密码</label>
-                <input type="password" name="password" placeholder="至少 6 个字符" required minlength="6" autocomplete="new-password" />
-            </div>
-
-            <div class="form-group">
-                <label>确认密码</label>
-                <input type="password" name="confirm_password" placeholder="再次输入密码" required minlength="6" autocomplete="new-password" />
-            </div>
-
-            <div class="invite-section">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <label>🎟️ 邀请码（选填）</label>
-                    <input type="text" name="invite_code" value={inviteCode} placeholder="有邀请码？在这里输入" />
-                    <p class="hint">管理员邀请码由站长生成，普通注册无需填写</p>
+                <label>邮箱验证码</label>
+                <div class="code-input-wrapper">
+                    <input type="text" name="verify_code" placeholder="6位数验证码" required autocomplete="off" maxlength="6" />
+                    <button type="button" id="send-code-btn" class="send-code-btn" style="position:static; margin-top:3px; height: 46px;">获取验证码</button>
                 </div>
             </div>
 
-            <button type="submit" class="submit-btn">注 册</button>
+            <div class="form-group">
+                <label>网站昵称</label>
+                <input type="text" name="username" value={submittedUsername} placeholder="在站内展示的名称" required />
+            </div>
+
+            <div class="form-group">
+                <label>登录密码 (可选)</label>
+                <input type="password" name="password" placeholder="设置后可用于快捷登录，留空则只能验证码登录" autocomplete="new-password" />
+            </div>
+
+            <div class="form-group" style="padding-top:10px; border-top:1px dashed #ccc;">
+                <label>🎟️ 邀请码 (仅管理员需要填写)</label>
+                <input type="text" name="invite_code" value={inviteCode} placeholder="普通注册无需填写" />
+            </div>
+
+            <button type="submit" class="submit-btn">验证并注册</button>
         </form>
 
         <div class="auth-footer">
             已有账号？<a href="/login">去登录</a>
         </div>
-
-        <a href="/" class="back-link">← 返回首页</a>
     </div>
+
+    <script is:inline>
+        document.getElementById('send-code-btn').addEventListener('click', async function() {
+            const email = document.getElementById('email').value.trim();
+            if (!email) return alert('请先填写邮箱地址');
+
+            const btn = this;
+            btn.disabled = true;
+            btn.innerText = '发送中...';
+
+            try {
+                const res = await fetch('/api/send-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, purpose: 'register' })
+                });
+
+                const data = await res.json();
+                
+                if (res.ok) {
+                    alert('验证码发送成功，请前往邮箱查收');
+                    let countdown = 60;
+                    const timer = setInterval(() => {
+                        btn.innerText = `${countdown}s 后重发`;
+                        countdown--;
+                        if (countdown < 0) {
+                            clearInterval(timer);
+                            btn.disabled = false;
+                            btn.innerText = '获取验证码';
+                        }
+                    }, 1000);
+                } else {
+                    alert(data.error || '验证码发送失败');
+                    btn.disabled = false;
+                    btn.innerText = '获取验证码';
+                }
+            } catch (err) {
+                alert('网络错误，请稍后刷新重试');
+                btn.disabled = false;
+                btn.innerText = '获取验证码';
+            }
+        });
+    </script>
 </body>
 </html>

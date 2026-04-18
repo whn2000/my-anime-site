@@ -1,41 +1,57 @@
 ---
 export const prerender = false;
 import { env } from "cloudflare:workers";
-import { hashPassword, createSession, setSessionCookie, getCurrentUser } from "../lib/auth.js";
+import { hashPassword, createSession, setSessionCookie, getCurrentUser, checkVerificationCode } from "../lib/auth.js";
 
 const db = env.DB;
 
-// 如果已登录，直接跳转首页
 const existingUser = await getCurrentUser(db, Astro.cookies);
-if (existingUser) {
-  return Astro.redirect("/");
-}
+if (existingUser) return Astro.redirect("/");
 
 let message = "";
-let messageType = "error"; // "error" | "success"
+let messageType = "error";
 
 if (Astro.request.method === "POST") {
   const data = await Astro.request.formData();
-  const username = data.get("username")?.toString().trim();
-  const password = data.get("password")?.toString();
+  const loginType = data.get("login_type"); // 'password' | 'code'
+  const email = data.get("email")?.toString().trim();
 
-  if (!username || !password) {
-    message = "请填写用户名和密码";
-  } else {
-    const passwordHash = await hashPassword(password);
-
-    // 查询用户
-    const user = await db.prepare(
-      "SELECT * FROM users WHERE username = ? AND password_hash = ?"
-    ).bind(username, passwordHash).first();
-
-    if (user) {
-      // 创建 Session
-      const token = await createSession(db, user.id);
-      setSessionCookie(Astro.cookies, token);
-      return Astro.redirect("/");
+  if (!email) {
+    message = "请输入邮箱";
+  } else if (loginType === 'password') {
+    const password = data.get("password")?.toString();
+    if (!password) {
+      message = "请输入密码";
     } else {
-      message = "用户名或密码错误";
+      const passwordHash = await hashPassword(password);
+      const user = await db.prepare("SELECT * FROM users WHERE email = ? AND password_hash = ?").bind(email, passwordHash).first();
+      
+      if (user) {
+        const token = await createSession(db, user.id);
+        setSessionCookie(Astro.cookies, token);
+        return Astro.redirect("/");
+      } else {
+        message = "邮箱或密码错误，或者您未设置密码（请尝试验证码登录）";
+      }
+    }
+  } else if (loginType === 'code') {
+    const verifyCode = data.get("verify_code")?.toString().trim();
+    if (!verifyCode) {
+      message = "请输入验证码";
+    } else {
+      const isCodeValid = await checkVerificationCode(db, email, verifyCode, 'login');
+      if (!isCodeValid) {
+        message = "验证码错误或已过期";
+      } else {
+        const user = await db.prepare("SELECT * FROM users WHERE email = ?").bind(email).first();
+        if (user) {
+          const token = await createSession(db, user.id);
+          setSessionCookie(Astro.cookies, token);
+          return Astro.redirect("/");
+        } else {
+          message = "账号不存在";
+        }
+      }
     }
   }
 }
@@ -49,186 +65,31 @@ if (Astro.request.method === "POST") {
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-
-        body {
-            font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
-            background-size: 400% 400%;
-            animation: gradientBG 15s ease infinite;
-            padding: 20px;
-        }
-
-        @keyframes gradientBG {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
-        }
-
-        .auth-card {
-            background: rgba(255, 255, 255, 0.85);
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-            border-radius: 28px;
-            padding: 50px 40px;
-            width: 100%;
-            max-width: 420px;
-            box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15);
-            animation: slideUp 0.6s ease;
-        }
-
-        @keyframes slideUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        .auth-header {
-            text-align: center;
-            margin-bottom: 35px;
-        }
-
-        .auth-header .logo {
-            font-size: 2.5rem;
-            margin-bottom: 8px;
-        }
-
-        .auth-header h1 {
-            font-size: 1.6rem;
-            color: #2d3436;
-            font-weight: 700;
-            margin-bottom: 6px;
-        }
-
-        .auth-header p {
-            font-size: 0.9rem;
-            color: #636e72;
-        }
-
-        .form-group {
-            margin-bottom: 20px;
-        }
-
-        .form-group label {
-            display: block;
-            font-size: 0.8rem;
-            font-weight: 600;
-            color: #636e72;
-            margin-bottom: 8px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .form-group input {
-            width: 100%;
-            padding: 14px 18px;
-            border: 2px solid #e9ecef;
-            border-radius: 14px;
-            font-size: 0.95rem;
-            font-family: inherit;
-            transition: all 0.3s;
-            background: rgba(255, 255, 255, 0.8);
-            outline: none;
-        }
-
-        .form-group input:focus {
-            border-color: #f09199;
-            box-shadow: 0 0 0 4px rgba(240, 145, 153, 0.15);
-        }
-
-        .submit-btn {
-            width: 100%;
-            padding: 15px;
-            background: linear-gradient(135deg, #f09199, #e73c7e);
-            color: white;
-            border: none;
-            border-radius: 14px;
-            font-size: 1rem;
-            font-weight: 700;
-            font-family: inherit;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-top: 10px;
-            letter-spacing: 0.5px;
-        }
-
-        .submit-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(231, 60, 126, 0.35);
-        }
-
-        .submit-btn:active {
-            transform: translateY(0);
-        }
-
-        .message {
-            text-align: center;
-            padding: 12px;
-            border-radius: 12px;
-            margin-bottom: 20px;
-            font-size: 0.85rem;
-            font-weight: 500;
-        }
-
-        .message.error {
-            background: rgba(214, 48, 49, 0.1);
-            color: #d63031;
-        }
-
-        .message.success {
-            background: rgba(0, 184, 148, 0.1);
-            color: #00b894;
-        }
-
-        .auth-footer {
-            text-align: center;
-            margin-top: 25px;
-            font-size: 0.85rem;
-            color: #636e72;
-        }
-
-        .auth-footer a {
-            color: #e73c7e;
-            text-decoration: none;
-            font-weight: 600;
-            transition: 0.2s;
-        }
-
-        .auth-footer a:hover {
-            color: #f09199;
-        }
-
-        .back-link {
-            display: block;
-            text-align: center;
-            margin-top: 18px;
-            font-size: 0.8rem;
-            color: #b2bec3;
-            text-decoration: none;
-            transition: 0.2s;
-        }
-
-        .back-link:hover { color: #636e72; }
-
-        @media (prefers-color-scheme: dark) {
-            .auth-card {
-                background: rgba(30, 30, 30, 0.9);
-                border-color: rgba(255, 255, 255, 0.1);
-            }
-            .auth-header h1 { color: #f5f5f7; }
-            .auth-header p, .form-group label { color: #a0a0a0; }
-            .form-group input {
-                background: rgba(50, 50, 50, 0.8);
-                border-color: rgba(255, 255, 255, 0.1);
-                color: #f5f5f7;
-            }
-            .form-group input:focus {
-                border-color: #f09199;
-            }
-            .auth-footer { color: #a0a0a0; }
-        }
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab); background-size: 400% 400%; animation: gradientBG 15s ease infinite; padding: 20px; }
+        @keyframes gradientBG { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+        .auth-card { background: rgba(255, 255, 255, 0.85); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.3); border-radius: 28px; padding: 50px 40px; width: 100%; max-width: 420px; box-shadow: 0 25px 50px rgba(0, 0, 0, 0.15); animation: slideUp 0.6s ease; }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
+        .auth-header { text-align: center; margin-bottom: 25px; }
+        .auth-header .logo { font-size: 2.5rem; margin-bottom: 8px; }
+        .auth-header h1 { font-size: 1.6rem; color: #2d3436; font-weight: 700; margin-bottom: 6px; }
+        .tabs { display: flex; margin-bottom: 25px; border-radius: 12px; background: rgba(0,0,0,0.05); padding: 5px; }
+        .tab-btn { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-radius: 8px; font-size: 0.9rem; font-weight: 600; color: #636e72; transition: 0.3s; }
+        .tab-btn.active { background: white; color: #f09199; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .form-group { margin-bottom: 18px; }
+        .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: #636e72; margin-bottom: 8px; }
+        .form-group input { width: 100%; padding: 14px 18px; border: 2px solid #e9ecef; border-radius: 14px; font-size: 0.95rem; font-family: inherit; transition: all 0.3s; background: rgba(255, 255, 255, 0.8); outline: none; }
+        .form-group input:focus { border-color: #f09199; box-shadow: 0 0 0 4px rgba(240, 145, 153, 0.15); }
+        .code-input-wrapper { display: flex; gap: 10px; }
+        .code-input-wrapper input { flex: 1; }
+        .send-code-btn { padding: 0 15px; background: #e9ecef; color: #2d3436; border: none; border-radius: 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: 0.2s; white-space: nowrap; }
+        .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #f09199, #e73c7e); color: white; border: none; border-radius: 14px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.3s; margin-top: 10px; }
+        .message { text-align: center; padding: 12px; border-radius: 12px; margin-bottom: 18px; font-size: 0.85rem; font-weight: 500; background: rgba(214, 48, 49, 0.1); color: #d63031; }
+        .auth-footer { text-align: center; margin-top: 25px; font-size: 0.85rem; color: #636e72; }
+        .auth-footer a { color: #e73c7e; text-decoration: none; font-weight: 600; }
+        
+        .login-form { display: none; }
+        .login-form.active { display: block; animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
     </style>
 </head>
 <body>
@@ -236,28 +97,111 @@ if (Astro.request.method === "POST") {
         <div class="auth-header">
             <div class="logo">🔐</div>
             <h1>欢迎回来</h1>
-            <p>登录你的追番账户</p>
         </div>
 
-        {message && <div class={`message ${messageType}`}>{message}</div>}
+        {message && <div class="message">{message}</div>}
 
-        <form method="POST">
+        <div class="tabs">
+            <div class="tab-btn active" onclick="switchTab('password')">密码登录</div>
+            <div class="tab-btn" onclick="switchTab('code')">验证码登录</div>
+        </div>
+
+        <!-- 密码登录 -->
+        <form method="POST" id="form-password" class="login-form active">
+            <input type="hidden" name="login_type" value="password" />
             <div class="form-group">
-                <label>用户名</label>
-                <input type="text" name="username" placeholder="输入用户名" required autocomplete="username" />
+                <label>注册邮箱</label>
+                <input type="email" name="email" placeholder="输入邮箱" required />
             </div>
             <div class="form-group">
-                <label>密码</label>
-                <input type="password" name="password" placeholder="输入密码" required autocomplete="current-password" />
+                <label>登录密码</label>
+                <input type="password" name="password" placeholder="输入密码" required />
+            </div>
+            <div style="text-align:right; margin-bottom:15px; font-size:0.8rem;">
+                <a href="/reset-password" style="color:#b2bec3; text-decoration:none;">忘记密码？</a>
             </div>
             <button type="submit" class="submit-btn">登 录</button>
+        </form>
+
+        <!-- 验证码登录 -->
+        <form method="POST" id="form-code" class="login-form">
+            <input type="hidden" name="login_type" value="code" />
+            <div class="form-group">
+                <label>注册邮箱</label>
+                <input type="email" id="code-email" name="email" placeholder="输入邮箱" required />
+            </div>
+            <div class="form-group">
+                <label>邮箱验证码</label>
+                <div class="code-input-wrapper">
+                    <input type="text" name="verify_code" placeholder="6位验证码" required maxlength="6" />
+                    <button type="button" id="send-login-code" class="send-code-btn">获取验证码</button>
+                </div>
+            </div>
+            <button type="submit" class="submit-btn" style="margin-top:25px;">快速登录</button>
         </form>
 
         <div class="auth-footer">
             还没有账号？<a href="/register">立即注册</a>
         </div>
-
-        <a href="/" class="back-link">← 返回首页</a>
+        <div style="text-align:center; margin-top:20px; font-size:0.8rem;">
+            <a href="/" style="color:#b2bec3; text-decoration:none;">← 返回首页</a>
+        </div>
     </div>
+
+    <script is:inline>
+        function switchTab(type) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.login-form').forEach(form => form.classList.remove('active'));
+            
+            if (type === 'password') {
+                document.querySelector('.tab-btn:nth-child(1)').classList.add('active');
+                document.getElementById('form-password').classList.add('active');
+            } else {
+                document.querySelector('.tab-btn:nth-child(2)').classList.add('active');
+                document.getElementById('form-code').classList.add('active');
+            }
+        }
+
+        document.getElementById('send-login-code').addEventListener('click', async function() {
+            const email = document.getElementById('code-email').value.trim();
+            if (!email) return alert('请先填写邮箱地址');
+
+            const btn = this;
+            btn.disabled = true;
+            btn.innerText = '发送中...';
+
+            try {
+                const res = await fetch('/api/send-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: email, purpose: 'login' })
+                });
+                
+                const data = await res.json();
+                
+                if (res.ok) {
+                    alert('验证码发送成功');
+                    let countdown = 60;
+                    const timer = setInterval(() => {
+                        btn.innerText = `${countdown}s`;
+                        countdown--;
+                        if (countdown < 0) {
+                            clearInterval(timer);
+                            btn.disabled = false;
+                            btn.innerText = '获取验证码';
+                        }
+                    }, 1000);
+                } else {
+                    alert(data.error || '发送失败');
+                    btn.disabled = false;
+                    btn.innerText = '获取验证码';
+                }
+            } catch (err) {
+                alert('网络错误');
+                btn.disabled = false;
+                btn.innerText = '获取验证码';
+            }
+        });
+    </script>
 </body>
 </html>
