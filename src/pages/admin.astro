@@ -224,7 +224,7 @@ const animeList = rawAnimeList.map(a => ({
         <div class="search-area" id="search-section">
             <label style="font-size:12px; color:#666;">第一步：从网络搜索填充 (可选)</label>
             <div style="display:flex; gap:10px;">
-                <input type="text" id="kw" placeholder="输入番剧名..." style="margin:0" />
+                <input type="text" id="kw" placeholder="输入番剧名 或 Bangumi ID..." style="margin:0" />
                 <button type="button" onclick="doSearch()" id="sBtn" style="width:80px; margin:0; background:#333; color:white;">搜索</button>
             </div>
             <div id="res" class="res-box"></div>
@@ -324,6 +324,7 @@ const animeList = rawAnimeList.map(a => ({
         <p style="font-size:12px; color:#666; margin-top:-10px;">如果手动一部部搜太麻烦，请在下方贴入您想补充的番剧名称（每行一个）。系统将全自动连入 Bangumi 查找导演、声优、图片和详情，打包全拿！</p>
         <textarea id="batch-input" rows="5" placeholder="魔法少女小圆
 某科学的超电磁炮
+253
 葬送的芙莉莲" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; resize:vertical; box-sizing:border-box;"></textarea>
         
         <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
@@ -361,7 +362,18 @@ const animeList = rawAnimeList.map(a => ({
         let searchCache = [];
 
         async function fetchBangumiSearch(originalKw) {
-            let kw = originalKw;
+            let kw = originalKw.trim();
+
+            if (/^\d+$/.test(kw)) {
+                try {
+                    const idRes = await fetch(`https://api.bgm.tv/subject/${kw}?responseGroup=large`);
+                    const single = await idRes.json();
+                    if (single && single.id) {
+                        return { list: [single] };
+                    }
+                } catch(e) {}
+            }
+
             try {
                 if (typeof OpenCC !== 'undefined') {
                     const t2s = OpenCC.Converter({ from: 'tw', to: 'cn' });
