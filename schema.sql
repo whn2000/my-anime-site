@@ -17,6 +17,9 @@ CREATE TABLE IF NOT EXISTS anime (
   review TEXT,
   image_url TEXT,
   added_by INTEGER,
+  director TEXT,
+  voice_actors TEXT,
+  studio TEXT,
   created_at TEXT DEFAULT (datetime('now'))
 );
 

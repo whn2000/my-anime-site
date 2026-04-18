@@ -22,13 +22,16 @@ if (Astro.request.method === "POST") {
     if (action === "add") {
       // 先插入全局番剧信息
       const result = await db.prepare(
-        "INSERT INTO anime (title, bgm_score, status, image_url, added_by) VALUES (?, ?, ?, ?, ?)"
+        "INSERT INTO anime (title, bgm_score, status, image_url, added_by, director, voice_actors, studio) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
       ).bind(
         data.get("title"), 
         data.get("bgm_score"), 
         data.get("status"), 
         data.get("image_url"),
-        user.id
+        user.id,
+        data.get("director"),
+        data.get("voice_actors"),
+        data.get("studio")
       ).run();
       
       const animeId = result.meta.last_row_id;
@@ -48,12 +51,15 @@ if (Astro.request.method === "POST") {
       const animeId = data.get("id");
       // 更新全局信息
       await db.prepare(
-        "UPDATE anime SET title = ?, bgm_score = ?, status = ?, image_url = ? WHERE id = ?"
+        "UPDATE anime SET title = ?, bgm_score = ?, status = ?, image_url = ?, director = ?, voice_actors = ?, studio = ? WHERE id = ?"
       ).bind(
         data.get("title"), 
         data.get("bgm_score"), 
         data.get("status"), 
         data.get("image_url"),
+        data.get("director"),
+        data.get("voice_actors"),
+        data.get("studio"),
         animeId
       ).run();
 
@@ -170,6 +176,9 @@ const animeList = rawAnimeList.map(a => ({
         <form method="POST" id="main-form">
             <input type="hidden" name="action" id="form-action" value="add" />
             <input type="hidden" name="id" id="form-id" />
+            <input type="hidden" name="director" id="dir" />
+            <input type="hidden" name="voice_actors" id="vas" />
+            <input type="hidden" name="studio" id="std" />
 
             <input type="text" name="title" id="t" placeholder="番剧名称" required />
             <div style="display:flex; gap:10px;">
@@ -239,7 +248,7 @@ const animeList = rawAnimeList.map(a => ({
             resBox.style.display = 'block';
             resBox.innerHTML = '<div style="padding:10px;">🔍 正在直连 AniList...</div>';
 
-            const query = `query($s:String){Page(perPage:5){media(search:$s,type:ANIME){id title{english romaji native}coverImage{large}averageScore description startDate{year}}}}`;
+            const query = `query($s:String){Page(perPage:5){media(search:$s,type:ANIME){id title{english romaji native}coverImage{large}averageScore description startDate{year} studios(isMain:true){nodes{name}} staff{edges{role node{name{full}}}} characters(sort:ROLE,perPage:3){edges{voiceActors(language:JAPANESE){name{full}}}}}}}`;
             try {
                 const response = await fetch('https://graphql.anilist.co', {
                     method: 'POST',
@@ -272,6 +281,15 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('bs').value = item.averageScore ? (item.averageScore / 10).toFixed(1) : 0;
             document.getElementById('img').value = item.coverImage.large;
             document.getElementById('rv').value = item.description ? item.description.replace(/<[^>]*>?/gm, '').substring(0, 150) + "..." : "";
+            
+            const director = item.staff?.edges?.find(e => e.role?.toLowerCase().includes('director'))?.node?.name?.full || '';
+            const vas = item.characters?.edges?.map(e => e.voiceActors?.[0]?.name?.full).filter(Boolean).slice(0,3).join(', ') || '';
+            const studio = item.studios?.nodes?.[0]?.name || '';
+            
+            document.getElementById('dir').value = director;
+            document.getElementById('vas').value = vas;
+            document.getElementById('std').value = studio;
+            
             document.getElementById('res').style.display = 'none';
         }
 
@@ -288,6 +306,9 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('bs').value = item.bgm_score;
             document.getElementById('st').value = item.status;
             document.getElementById('img').value = item.image_url;
+            document.getElementById('dir').value = item.director || '';
+            document.getElementById('vas').value = item.voice_actors || '';
+            document.getElementById('std').value = item.studio || '';
             document.getElementById('rv').value = item.review;
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
