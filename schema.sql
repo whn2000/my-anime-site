@@ -82,3 +82,9 @@ CREATE TABLE IF NOT EXISTS verification_codes (
   expires_at TEXT NOT NULL,
   created_at TEXT DEFAULT (datetime('now'))
 );
+
+-- 全局设置表
+CREATE TABLE IF NOT EXISTS site_settings (
+  key TEXT PRIMARY KEY,
+  value TEXT
+);

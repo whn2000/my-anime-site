@@ -8,6 +8,13 @@ const db = env.DB;
 // 获取当前登录用户
 const currentUser = await getCurrentUser(db, Astro.cookies);
 
+// 提取全局背景设置
+let bgUrl = 'https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80';
+try {
+  const bgSetting = await db.prepare("SELECT value FROM site_settings WHERE key = 'background_url'").first();
+  if (bgSetting && bgSetting.value) bgUrl = bgSetting.value;
+} catch(e) {}
+
 // 获取番剧列表，包含平均分和最新一条精选评价
 const { results: animeList } = await db.prepare(`
   SELECT a.*, 
@@ -35,35 +42,26 @@ const getStatusTheme = (status) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MyAnimeList - 追番记录</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;700&family=Noto+Sans+SC:wght@300;500;700&display=swap" rel="stylesheet">
-    <style>
+    <style define:vars={{ bgUrl }}>
         :root {
-            --primary: #f09199;
-            --glass: rgba(255, 255, 255, 0.7);
-            --card-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            --primary: #ff4757;
+            --glass: rgba(15, 15, 20, 0.5);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --card-shadow: 0 15px 35px 0 rgba(0, 0, 0, 0.4);
+            --text-main: #f1f2f6;
         }
 
-        @media (prefers-color-scheme: dark) {
-            :root {
-                --glass: rgba(20, 20, 20, 0.7);
-                --text-main: #f5f5f7;
-            }
-        }
-
-        /* 1. 动态渐变背景 */
+        /* 1. 全屏沉浸式背景 */
         body {
             font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif;
             margin: 0;
-            background: linear-gradient(-45deg, #fbc2eb, #a6c1ee, #fbc2eb, #a18cd1);
-            background-size: 400% 400%;
-            animation: gradientBG 20s ease infinite;
+            background-color: #0f0f13;
+            background-image: url(var(--bgUrl));
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
             min-height: 100vh;
-            color: var(--text-main, #2d3436);
-        }
-
-        @keyframes gradientBG {
-            0% { background-position: 0% 50%; }
-            50% { background-position: 100% 50%; }
-            100% { background-position: 0% 50%; }
+            color: var(--text-main);
         }
 
         /* 导航栏 */
@@ -72,15 +70,16 @@ const getStatusTheme = (status) => {
             top: 20px;
             right: 20px;
             z-index: 100;
-            background: rgba(255, 255, 255, 0.2);
-            backdrop-filter: blur(15px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: var(--glass);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
             padding: 10px 20px;
             border-radius: 100px;
             display: flex;
             gap: 15px;
             align-items: center;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
 
         .navbar a {
@@ -89,19 +88,19 @@ const getStatusTheme = (status) => {
             font-size: 0.9rem;
             font-weight: 600;
             transition: 0.2s;
-            text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+            text-shadow: 0 1px 5px rgba(0,0,0,0.5);
         }
 
-        .navbar a:hover { color: var(--primary); }
+        .navbar a:hover { color: var(--primary); text-shadow: 0 0 10px var(--primary); }
 
         .navbar .user-badge {
-            background: white;
-            color: #e73c7e;
+            background: rgba(255,255,255,0.1);
+            color: #fff;
+            border: 1px solid var(--glass-border);
             padding: 4px 12px;
             border-radius: 100px;
             font-size: 0.8rem;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            text-shadow: none;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
         }
 
         /* 2. 布局容器 */
@@ -116,10 +115,11 @@ const getStatusTheme = (status) => {
             text-align: center;
             margin-bottom: 60px;
             color: white;
-            text-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            text-shadow: 0 4px 25px rgba(0,0,0,0.8);
         }
 
-        .header h1 { font-size: 3rem; margin: 0; letter-spacing: -1px; }
+        .header h1 { font-size: 3.5rem; margin: 0; letter-spacing: -1.5px; font-weight: 800; }
+        .header p { font-size: 1.1rem; opacity: 0.9; margin-top: 10px; font-weight: 500; }
 
         /* 3. 精美卡片设计 */
         .grid {
@@ -130,8 +130,9 @@ const getStatusTheme = (status) => {
 
         .card {
             background: var(--glass);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
             border-radius: 24px;
             overflow: hidden;
             box-shadow: var(--card-shadow);
@@ -142,8 +143,8 @@ const getStatusTheme = (status) => {
 
         .card:hover {
             transform: translateY(-12px) scale(1.02);
-            box-shadow: 0 15px 45px rgba(0,0,0,0.15);
-            border: 1px solid var(--primary);
+            box-shadow: 0 15px 45px rgba(0,0,0,0.6);
+            border: 1px solid rgba(255, 71, 87, 0.4);
         }
 
         .cover-wrapper {
@@ -175,8 +176,10 @@ const getStatusTheme = (status) => {
             font-size: 1.3rem; font-weight: 800; margin: 0 0 12px 0;
             cursor: pointer; transition: 0.3s;
             line-height: 1.3;
+            color: #fff;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.8);
         }
-        .title:hover { color: var(--primary); text-shadow: 0 2px 10px rgba(240, 145, 153, 0.4); }
+        .title:hover { color: var(--primary); text-shadow: 0 0 15px var(--primary); }
 
         .scores {
             display: flex; gap: 10px; margin-bottom: 12px;
@@ -184,21 +187,22 @@ const getStatusTheme = (status) => {
         }
         .score-pill {
             padding: 5px 10px; border-radius: 8px;
-            background: rgba(255,255,255,0.5); border: 1px solid rgba(0,0,0,0.03);
+            background: rgba(0,0,0,0.4); border: 1px solid var(--glass-border);
+            color: #ddd;
         }
 
         .meta-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
         .meta-tag {
             font-size: 0.75rem; padding: 4px 10px; border-radius: 8px;
-            background: rgba(0,0,0,0.03); color: #636e72; font-weight: 600;
-            border: 1px solid rgba(0,0,0,0.05);
+            background: rgba(255,255,255,0.05); color: #ccc; font-weight: 600;
+            border: 1px solid var(--glass-border);
         }
 
         .review {
             font-size: 0.9rem; line-height: 1.6; flex-grow: 1;
-            color: #636e72; opacity: 0.9;
+            color: #bbb; opacity: 0.9;
             display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-            background: rgba(255,255,255,0.3); padding: 12px; border-radius: 12px;
+            background: rgba(0,0,0,0.3); padding: 12px; border-radius: 12px;
             border-left: 3px solid var(--primary);
         }
 
@@ -206,44 +210,50 @@ const getStatusTheme = (status) => {
         dialog {
             border: none; border-radius: 30px; padding: 0;
             width: 90%; max-width: 800px;
-            background: var(--glass); backdrop-filter: blur(25px);
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            background: rgba(15, 15, 20, 0.75); 
+            backdrop-filter: blur(35px);
+            -webkit-backdrop-filter: blur(35px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.8);
+            color: white;
         }
 
-        dialog::backdrop { background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); }
+        dialog::backdrop { background: rgba(0,0,0,0.7); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); }
 
         .modal-body { 
             padding: 40px; position: relative; 
             max-height: 85vh; overflow-y: auto;
         }
         
-        .modal-header-sec { display: flex; gap: 20px; margin-bottom: 30px; }
-        .modal-img { width: 180px; height: 260px; object-fit: cover; border-radius: 16px; box-shadow: 0 10px 20px rgba(0,0,0,0.15); flex-shrink: 0; }
+        .modal-header-sec { display: flex; gap: 25px; margin-bottom: 30px; }
+        .modal-img { width: 180px; height: 260px; object-fit: cover; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); flex-shrink: 0; }
         .modal-info-wrap { flex-grow: 1; }
         
         .close-btn { 
             position: absolute; top: 20px; right: 20px; 
-            background: white; border: none; width: 40px; height: 40px; 
-            border-radius: 50%; font-size: 1.2rem; cursor: pointer;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            background: rgba(255,255,255,0.1); color: white; border: 1px solid rgba(255,255,255,0.15); width: 40px; height: 40px; 
+            border-radius: 50%; font-size: 1.2rem; cursor: pointer; transition: 0.2s;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
         }
+        .close-btn:hover { background: rgba(255,255,255,0.2); }
 
         /* 评分和评论区样式 */
-        .section-title { font-size: 1.1rem; font-weight: 700; margin: 20px 0 10px; border-bottom: 2px solid rgba(0,0,0,0.05); padding-bottom: 8px; }
+        .section-title { font-size: 1.1rem; font-weight: 700; margin: 20px 0 10px; border-bottom: 2px solid rgba(255,255,255,0.05); padding-bottom: 8px; color: #ddd;}
         
-        .score-item { background: rgba(255,255,255,0.5); padding: 12px 15px; border-radius: 12px; margin-bottom: 10px; }
-        .score-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; }
+        .score-item { background: rgba(0,0,0,0.4); padding: 12px 15px; border-radius: 12px; margin-bottom: 10px; border: 1px solid var(--glass-border); }
+        .score-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; color: #eee; }
         .user-tag { background: #3dbbee; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
-        .owner-tag { background: #f09199; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
+        .owner-tag { background: var(--primary); color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
         
-        .comment-item { background: rgba(0,0,0,0.03); padding: 15px; border-radius: 12px; margin-bottom: 12px; position: relative; }
-        .comment-meta { font-size: 0.8rem; color: #636e72; margin-bottom: 6px; }
-        .comment-text { font-size: 0.95rem; line-height: 1.5; }
-        .del-comment-btn { position: absolute; top: 15px; right: 15px; background: none; border: none; color: #d63031; cursor: pointer; font-size: 0.8rem; }
+        .comment-item { background: rgba(0,0,0,0.3); padding: 15px; border-radius: 12px; margin-bottom: 12px; position: relative; border: 1px solid rgba(255,255,255,0.03); }
+        .comment-meta { font-size: 0.8rem; color: #bbb; margin-bottom: 6px; }
+        .comment-text { font-size: 0.95rem; line-height: 1.5; color: #ddd; }
+        .del-comment-btn { position: absolute; top: 15px; right: 15px; background: none; border: none; color: #ff4757; cursor: pointer; font-size: 0.8rem; }
 
         .comment-form { margin-top: 20px; }
-        .comment-textarea { width: 100%; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 15px; font-family: inherit; resize: vertical; background: rgba(255,255,255,0.8); }
-        .comment-btn { background: #2d3436; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; }
+        .comment-textarea { width: 100%; border: 1px solid rgba(255,255,255,0.15); border-radius: 12px; padding: 15px; font-family: inherit; resize: vertical; background: rgba(0,0,0,0.4); color: white; }
+        .comment-textarea::placeholder { color: #888; }
+        .comment-btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; }
 
         .footer { text-align: center; margin-top: 80px; padding: 40px; color: white; opacity: 0.7; }
 
@@ -254,7 +264,32 @@ const getStatusTheme = (status) => {
             to { opacity: 1; transform: translateY(0); }
         }
         
-        #loading-indicator { text-align: center; color: #666; padding: 20px; }
+        #loading-indicator { text-align: center; color: #aaa; padding: 20px; }
+
+        /* 移动端适配 */
+        @media (max-width: 600px) {
+            .navbar {
+                top: auto; bottom: 20px; right: 50%; left: auto;
+                transform: translateX(50%);
+                padding: 10px 15px;
+                width: max-content; max-width: 90%;
+                justify-content: center; flex-wrap: wrap; gap: 10px;
+            }
+            .navbar a { font-size: 0.85rem; }
+            .container { padding: 40px 15px 90px; }
+            .header h1 { font-size: 2.2rem; }
+            .header { margin-bottom: 40px; }
+            .grid { grid-template-columns: repeat(auto-fill, minmax(100%, 1fr)); gap: 25px; }
+            .cover-wrapper { height: 240px; }
+            
+            dialog { width: 95%; }
+            .modal-body { padding: 30px 20px; }
+            .modal-header-sec { flex-direction: column; align-items: center; text-align: center; gap: 15px; margin-bottom: 20px; }
+            .modal-img { width: 130px; height: 180px; }
+            #m-title { font-size: 1.4rem; }
+            .close-btn { top: 10px; right: 10px; width: 32px; height: 32px; font-size: 1rem; }
+            .score-header { flex-direction: column; align-items: flex-start; gap: 5px; }
+        }
     </style>
 </head>
 <body>
@@ -329,9 +364,9 @@ const getStatusTheme = (status) => {
             <div class="modal-header-sec">
                 <img id="m-img" class="modal-img" src="" alt="" />
                 <div class="modal-info-wrap">
-                    <h2 id="m-title" style="margin-bottom: 10px; font-size:1.8rem;"></h2>
+                    <h2 id="m-title" style="margin-bottom: 10px; font-size:1.8rem; color:#fff; text-shadow:0 2px 10px rgba(0,0,0,0.5);"></h2>
                     <div id="m-info" style="margin-bottom: 15px; font-weight: bold; color: var(--primary);"></div>
-                    <div id="m-meta" style="margin-bottom: 20px; font-size: 0.95rem; color: var(--text-main, #555); line-height: 1.8; background: rgba(0,0,0,0.03); padding: 15px; border-radius: 12px; border-left: 3px solid #a29bfe;"></div>
+                    <div id="m-meta" style="margin-bottom: 20px; font-size: 0.95rem; color: #ddd; line-height: 1.8; background: rgba(0,0,0,0.4); padding: 15px; border-radius: 12px; border-left: 3px solid #74b9ff;"></div>
                     
                     <div class="section-title">✨ 管理员独立评分</div>
                     <div id="m-scores-list"></div>
