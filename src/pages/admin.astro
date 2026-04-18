@@ -3,192 +3,131 @@ export const prerender = false;
 import { env } from "cloudflare:workers";
 
 const db = env.DB;
-const cookies = Astro.request.headers.get("cookie") || "";
-const sessionId = cookies.match(/session_id=([^;]+)/)?.[1];
-
-// 1. 🔐 核心保安逻辑：身份验证与角色读取
-const sessionInfo = sessionId ? await db.prepare(
-    "SELECT s.*, u.role, u.username FROM sessions s JOIN users u ON s.user_id = u.id WHERE s.id = ? AND s.expires_at > ?"
-).bind(sessionId, Math.floor(Date.now()/1000)).first() : null;
-
-if (!sessionInfo) return Astro.redirect("/login");
-
-const { user_id: currentUserId, role, username } = sessionInfo;
 let message = "";
 
-// 2. 处理数据库操作 [cite: 27]
+// 1. 处理数据库操作（新增、删除、更新）
 if (Astro.request.method === "POST") {
   try {
     const data = await Astro.request.formData();
-    const action = data.get("action"); [cite: 28]
+    const action = data.get("action");
 
     if (action === "add") {
       await db.prepare(
-        "INSERT INTO anime (title, score, bgm_score, status, review, image_url, user_id) VALUES (?, ?, ?, ?, ?, ?, ?)"
+        "INSERT INTO anime (title, score, bgm_score, status, review, image_url) VALUES (?, ?, ?, ?, ?, ?)"
       ).bind(
-        data.get("title"), data.get("score"), data.get("bgm_score"), 
-        data.get("status"), data.get("review"), data.get("image_url"), currentUserId
-      ).run(); [cite: 29]
+        data.get("title"), 
+        data.get("score"), 
+        data.get("bgm_score"), 
+        data.get("status"), 
+        data.get("review"), 
+        data.get("image_url")
+      ).run();
       message = "✅ 发布成功！";
-    } 
-    else if (action === "update") {
-      const targetId = data.get("id");
-      // 权限校验：管理员/站长可改全部，普通用户只能改自己的
-      const canUpdate = (role === 'owner' || role === 'admin') ? true : 
-                        await db.prepare("SELECT id FROM anime WHERE id = ? AND user_id = ?").bind(targetId, currentUserId).first();
-      
-      if (canUpdate) {
-        await db.prepare(
-          "UPDATE anime SET title = ?, score = ?, bgm_score = ?, status = ?, review = ?, image_url = ? WHERE id = ?"
-        ).bind(
-          data.get("title"), data.get("score"), data.get("bgm_score"), 
-          data.get("status"), data.get("review"), data.get("image_url"), targetId
-        ).run(); [cite: 30]
-        message = "✨ 信息已更新！"; [cite: 31]
-      }
-    } 
-    else if (action === "delete") {
-      const targetId = data.get("id");
-      // 权限校验：同上
-      const canDelete = (role === 'owner' || role === 'admin') ? true : 
-                        await db.prepare("SELECT id FROM anime WHERE id = ? AND user_id = ?").bind(targetId, currentUserId).first();
-      
-      if (canDelete) {
-        await db.prepare("DELETE FROM anime WHERE id = ?").bind(targetId).run(); [cite: 32]
-        message = "🗑️ 记录已删除";
-      }
-    }
-    else if (action === "generate_invite" && role === 'owner') {
-      // 站长生成邀请码
-      const newCode = crypto.randomUUID().substring(0, 8);
-      await db.prepare("INSERT INTO invitations (code, role) VALUES (?, 'admin')").bind(newCode).run();
-      message = "🎫 邀请码已生成！";
+    } else if (action === "update") {
+      await db.prepare(
+        "UPDATE anime SET title = ?, score = ?, bgm_score = ?, status = ?, review = ?, image_url = ? WHERE id = ?"
+      ).bind(
+        data.get("title"), 
+        data.get("score"), 
+        data.get("bgm_score"), 
+        data.get("status"), 
+        data.get("review"), 
+        data.get("image_url"),
+        data.get("id")
+      ).run();
+      message = "✨ 信息已更新！";
+    } else if (action === "delete") {
+      await db.prepare("DELETE FROM anime WHERE id = ?").bind(data.get("id")).run();
+      message = "🗑️ 记录已删除";
     }
   } catch (e) {
-    message = "❌ 错误：" + e.message; [cite: 33]
+    message = "❌ 数据库错误：" + e.message;
   }
 }
 
-// 3. 根据角色拉取列表 [cite: 33]
-let animeList;
-if (role === 'owner' || role === 'admin') {
-    const { results } = await db.prepare("SELECT * FROM anime ORDER BY id DESC").all();
-    animeList = results;
-} else {
-    const { results } = await db.prepare("SELECT * FROM anime WHERE user_id = ? ORDER BY id DESC").bind(currentUserId).all();
-    animeList = results;
-}
-
-// 4. 获取未使用的邀请码（仅限站长查看）
-const activeInvites = (role === 'owner') ? await db.prepare("SELECT * FROM invitations WHERE is_used = 0").all() : { results: [] };
+// 2. 获取完整番剧列表以供编辑 
+const { results: animeList } = await db.prepare("SELECT * FROM anime ORDER BY id DESC").all();
 ---
 
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>管理后台 - {role === 'owner' ? '站长模式' : '管理模式'}</title>
+    <title>管理后台 - 增强版</title>
     <style>
-        :root { --main: #3dbbee; --edit: #f09199; --owner: #faad14; } [cite: 34, 35]
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; color: #333; } [cite: 36]
-        .box { max-width: 800px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); } [cite: 37]
-        .search-area { background: #eef9ff; padding: 15px; border-radius: 10px; margin-bottom: 20px; } [cite: 38]
-        .res-box { border: 1px solid #eee; border-radius: 8px; display: none; margin-top: 10px; background: white; max-height: 250px; overflow-y: auto; } [cite: 39, 40]
-        .item { display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; gap: 10px; } [cite: 41, 42]
-        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; } [cite: 43, 44]
-        button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; } [cite: 45]
-        .btn-blue { background: var(--main); color: white; } [cite: 46]
-        .btn-ghost { background: #eee; color: #666; font-size: 12px; } [cite: 48]
-        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f9f9f9; } [cite: 49]
-        .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #eee; margin-left: 5px; } [cite: 50]
-        .owner-section { background: #fffbe6; border: 1px solid #ffe58f; padding: 20px; border-radius: 12px; margin-bottom: 25px; }
+        :root { --main: #3dbbee; --edit: #f09199; }
+        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
+        .box { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
+        .search-area { background: #eef9ff; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
+        .res-box { border: 1px solid #eee; border-radius: 8px; display: none; margin-top: 10px; background: white; max-height: 300px; overflow-y: auto; }
+        .item { display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; gap: 10px; }
+        .item:hover { background: #f0faff; }
+        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        .btn-blue { background: var(--main); color: white; }
+        .btn-ghost { background: #eee; color: #666; margin-top: 5px; font-size: 12px; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f9f9f9; }
+        .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #eee; margin-left: 5px; }
     </style>
 </head>
 <body>
     <div class="box">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-            <a href="/" style="color:#999; text-decoration:none;">← 首页</a>
-            <div style="font-size:13px; color:#666;">
-                欢迎, <strong>{username}</strong> ({role}) | 
-                <button onclick="document.cookie='session_id=; Max-Age=0; path=/'; location.reload()" style="background:none; border:none; color:#ff4d4f; cursor:pointer; padding:0">退出</button>
-            </div>
-        </div>
-
-        {message && <div style="background:#e6f7ff; padding:10px; border-radius:8px; text-align:center; margin-bottom:20px; color:var(--main);">{message}</div>}
-
-        {role === 'owner' && (
-            <div class="owner-section">
-                <h3 style="margin-top:0">站长特权：管理员邀请</h3>
-                <form method="POST">
-                    <input type="hidden" name="action" value="generate_invite" />
-                    <button type="submit" style="background:var(--owner); color:white;">生成管理员邀请链接</button>
-                </form>
-                {activeInvites.results.length > 0 && (
-                    <div style="margin-top:15px; font-size:12px;">
-                        <p>待使用的邀请码（发送给好友）：</p>
-                        {activeInvites.results.map(inv => (
-                            <div style="padding:5px; background:white; border-radius:4px; margin-bottom:5px; border:1px solid #eee;">
-                                <code>/register?code={inv.code}</code>
-                            </div>
-                        ))}
-                    </div>
-                )}
-            </div>
-        )}
-
+        <a href="/" style="color:#999; font-size:14px; text-decoration:none;">← 返回首页</a>
         <h1 id="form-title">添加新番剧</h1>
-        
+        {message && <p style="color: #3dbbee; text-align:center; font-weight:bold;">{message}</p>}
+
         <div class="search-area" id="search-section">
-            <label style="font-size:12px; color:#666;">第一步：网络搜索填充</label>
+            <label style="font-size:12px; color:#666;">第一步：从网络搜索填充 (可选)</label>
             <div style="display:flex; gap:10px;">
-                <input type="text" id="kw" placeholder="输入番剧名..." style="margin:0" /> [cite: 51]
-                <button type="button" onclick="doSearch()" style="width:80px; margin:0; background:#333; color:white;">搜索</button>
+                <input type="text" id="kw" placeholder="输入番剧名..." style="margin:0" />
+                <button type="button" onclick="doSearch()" id="sBtn" style="width:80px; margin:0; background:#333; color:white;">搜索</button>
             </div>
-            <div id="res" class="res-box"></div> [cite: 51]
+            <div id="res" class="res-box"></div>
         </div>
 
-        <form method="POST" id="main-form">
-            <input type="hidden" name="action" id="form-action" value="add" /> [cite: 52]
-            <input type="hidden" name="id" id="form-id" /> [cite: 52]
+        <form method="POST" action="/admin" id="main-form">
+            <input type="hidden" name="action" id="form-action" value="add" />
+            <input type="hidden" name="id" id="form-id" />
 
-            <input type="text" name="title" id="t" placeholder="番剧名称" required /> [cite: 52]
-            <div style="display:flex; gap:10px;"> [cite: 53]
+            <input type="text" name="title" id="t" placeholder="番剧名称" required />
+            <div style="display:flex; gap:10px;">
                 <input type="number" step="0.1" name="score" id="s" placeholder="我的评分" required />
                 <input type="number" step="0.1" name="bgm_score" id="bs" placeholder="官方评分" readonly style="background:#f9f9f9" />
             </div>
-            <select name="status" id="st"> [cite: 54]
+            <select name="status" id="st">
                 <option value="正在追">正在追</option>
                 <option value="已完结">已完结</option>
                 <option value="想看">想看</option>
                 <option value="弃番">弃番</option>
             </select>
-            <input type="url" name="image_url" id="img" placeholder="图片 URL" /> [cite: 54]
-            <textarea name="review" id="rv" placeholder="你的评价..." rows="4"></textarea> [cite: 54]
+            <input type="url" name="image_url" id="img" placeholder="图片 URL" />
+            <textarea name="review" id="rv" placeholder="你的评价..." rows="4"></textarea>
             
-            <button type="submit" class="btn-blue" id="submit-btn">发布到网站</button> [cite: 55]
-            <button type="button" class="btn-ghost" id="cancel-btn" style="display:none; margin-top:8px;" onclick="resetToAdd()">取消修改 / 返回新增</button>
+            <button type="submit" class="btn-blue" id="submit-btn">发布到网站</button>
+            <button type="button" class="btn-ghost" id="cancel-btn" style="display:none;" onclick="resetToAdd()">取消修改 / 返回新增</button>
         </form>
 
-        <hr style="margin:40px 0; border:none; border-top:1px solid #eee;" /> [cite: 56]
+        <hr style="margin:40px 0; border:none; border-top:1px solid #eee;" />
         
-        <h3>
-            {role === 'user' ? '我的番剧列表' : '全站番剧列表'} ({animeList.length})
-        </h3>
+        <h3>已记录的番剧 ({animeList.length})</h3>
         <div id="anime-list">
             {animeList.map(i => (
                 <div class="list-item">
                     <div>
-                        <span style="font-size:14px; font-weight:500;">{i.title}</span> [cite: 57]
-                        <span class="badge">{i.status}</span> [cite: 57]
-                        {role !== 'user' && i.user_id && <span style="font-size:10px; color:#999; margin-left:10px;">UID:{i.user_id}</span>}
+                        <span style="font-size:14px; font-weight:500;">{i.title}</span>
+                        <span class="badge">{i.status}</span>
                     </div>
                     <div style="display:flex; gap:15px;">
-                        <button type="button" style="color:var(--main); background:none; border:none; cursor:pointer; font-size:13px;" onclick={`prepareEdit(${JSON.stringify(i)})`}>编辑</button> [cite: 58, 59]
+                        <button 
+                            type="button" 
+                            style="color:var(--main); background:none; border:none; cursor:pointer; font-size:13px;"
+                            onclick={`prepareEdit(${JSON.stringify(i)})`}
+                        >编辑</button>
                         
-                        <form method="POST" style="margin:0;">
-                            <input type="hidden" name="action" value="delete" /> [cite: 60]
-                            <input type="hidden" name="id" value={i.id} /> [cite: 60]
-                            <button type="submit" style="color:#ff4d4f; background:none; border:none; cursor:pointer; font-size:13px;" onclick="return confirm('确定要删除吗？')">删除</button> [cite: 61]
+                        <form method="POST" action="/admin" style="margin:0;">
+                            <input type="hidden" name="action" value="delete" />
+                            <input type="hidden" name="id" value={i.id} />
+                            <button type="submit" style="color:#ff4d4f; background:none; border:none; cursor:pointer; font-size:13px;" onclick="return confirm('确定要永久删除这条记录吗？')">删除</button>
                         </form>
                     </div>
                 </div>
@@ -197,14 +136,15 @@ const activeInvites = (role === 'owner') ? await db.prepare("SELECT * FROM invit
     </div>
 
     <script is:inline>
-        // 搜索逻辑 [cite: 62-74]
         let searchCache = [];
+
         async function doSearch() {
             const kw = document.getElementById('kw').value;
             if(!kw) return;
             const resBox = document.getElementById('res');
             resBox.style.display = 'block';
-            resBox.innerHTML = '<div style="padding:10px;">🔍 搜索中...</div>';
+            resBox.innerHTML = '<div style="padding:10px;">🔍 正在直连 AniList...</div>';
+
             const query = `query($s:String){Page(perPage:5){media(search:$s,type:ANIME){id title{english romaji native}coverImage{large}averageScore description startDate{year}}}}`;
             try {
                 const response = await fetch('https://graphql.anilist.co', {
@@ -217,14 +157,19 @@ const activeInvites = (role === 'owner') ? await db.prepare("SELECT * FROM invit
                     searchCache = result.data.Page.media;
                     resBox.innerHTML = searchCache.map((i, index) => `
                         <div class="item" onclick="selectSearchItem(${index})">
-                            <img src="${i.coverImage.large}" style="width:30px; height:40px; border-radius:4px;" />
+                            <img src="${i.coverImage.large}" style="width:35px; height:50px; border-radius:4px;" />
                             <div>
                                 <div style="font-weight:bold; font-size:12px;">${i.title.english || i.title.native}</div>
-                                <div style="font-size:10px; color:#999;">评分: ${i.averageScore || 'N/A'}</div>
+                                <div style="font-size:10px; color:#999;">${i.startDate.year || ''} | 评分: ${i.averageScore || 'N/A'}</div>
                             </div>
-                        </div>`).join('');
-                } else { resBox.innerHTML = '<div style="padding:10px;">❌ 无结果</div>'; }
-            } catch (err) { resBox.innerHTML = '<div style="padding:10px; color:red;">⚠️ 失败</div>'; }
+                        </div>
+                    `).join('');
+                } else {
+                    resBox.innerHTML = '<div style="padding:10px;">❌ 未找到结果</div>';
+                }
+            } catch (err) {
+                resBox.innerHTML = '<div style="padding:10px; color:red;">⚠️ 网络连接失败</div>';
+            }
         }
 
         function selectSearchItem(idx) {
@@ -236,14 +181,14 @@ const activeInvites = (role === 'owner') ? await db.prepare("SELECT * FROM invit
             document.getElementById('res').style.display = 'none';
         }
 
-        // 修改与重置逻辑 [cite: 75-81]
         function prepareEdit(item) {
-            document.getElementById('form-title').innerText = "编辑：" + item.title;
+            document.getElementById('form-title').innerText = "正在编辑：" + item.title;
             document.getElementById('form-action').value = "update";
             document.getElementById('form-id').value = item.id;
             document.getElementById('submit-btn').innerText = "保存修改";
             document.getElementById('submit-btn').style.background = "#f09199";
             document.getElementById('cancel-btn').style.display = "block";
+            
             document.getElementById('t').value = item.title;
             document.getElementById('s').value = item.score;
             document.getElementById('bs').value = item.bgm_score;
@@ -256,6 +201,7 @@ const activeInvites = (role === 'owner') ? await db.prepare("SELECT * FROM invit
         function resetToAdd() {
             document.getElementById('form-title').innerText = "添加新番剧";
             document.getElementById('form-action').value = "add";
+            document.getElementById('form-id').value = "";
             document.getElementById('submit-btn').innerText = "发布到网站";
             document.getElementById('submit-btn').style.background = "#3dbbee";
             document.getElementById('cancel-btn').style.display = "none";
