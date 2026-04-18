@@ -31,38 +31,46 @@ if (Astro.request.method === "POST") {
       message = "🌟 全站外观设置已更新！";
       backgroundUrl = newBg;
     } else if (action === "add") {
-      // 先插入全局番剧信息
-      const result = await db.prepare(
-        "INSERT INTO anime (title, bgm_score, status, image_url, added_by, director, voice_actors, studio) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
-      ).bind(
-        data.get("title"), 
-        data.get("bgm_score"), 
-        data.get("status"), 
-        data.get("image_url"),
-        user.id,
-        data.get("director"),
-        data.get("voice_actors"),
-        data.get("studio")
-      ).run();
+      const incomingTitle = data.get("title");
+      const existing = await db.prepare("SELECT id FROM anime WHERE title = ?").bind(incomingTitle).first();
       
-      const animeId = result.meta.last_row_id;
+      if (existing) {
+          message = "❌ 添加失败：该番剧已存在，禁止二次添加！";
+      } else {
+          // 先插入全局番剧信息
+          const result = await db.prepare(
+            "INSERT INTO anime (title, bgm_score, status, image_url, added_by, director, voice_actors, studio, review) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+          ).bind(
+            incomingTitle, 
+            data.get("bgm_score"), 
+            data.get("status"), 
+            data.get("image_url"),
+            user.id,
+            data.get("director"),
+            data.get("voice_actors"),
+            data.get("studio"),
+            data.get("summary")
+          ).run();
+          
+          const animeId = result.meta.last_row_id;
 
-      // 插入个人独立评分
-      await db.prepare(
-        "INSERT INTO anime_scores (anime_id, user_id, score, review) VALUES (?, ?, ?, ?)"
-      ).bind(
-        animeId,
-        user.id,
-        data.get("score"),
-        data.get("review")
-      ).run();
+          // 插入个人独立评分
+          await db.prepare(
+            "INSERT INTO anime_scores (anime_id, user_id, score, review) VALUES (?, ?, ?, ?)"
+          ).bind(
+            animeId,
+            user.id,
+            data.get("score"),
+            data.get("review")
+          ).run();
 
-      message = "✅ 发布成功！";
+          message = "✅ 发布成功！";
+      }
     } else if (action === "update") {
       const animeId = data.get("id");
       // 更新全局信息
       await db.prepare(
-        "UPDATE anime SET title = ?, bgm_score = ?, status = ?, image_url = ?, director = ?, voice_actors = ?, studio = ? WHERE id = ?"
+        "UPDATE anime SET title = ?, bgm_score = ?, status = ?, image_url = ?, director = ?, voice_actors = ?, studio = ?, review = ? WHERE id = ?"
       ).bind(
         data.get("title"), 
         data.get("bgm_score"), 
@@ -71,6 +79,7 @@ if (Astro.request.method === "POST") {
         data.get("director"),
         data.get("voice_actors"),
         data.get("studio"),
+        data.get("summary"),
         animeId
       ).run();
 
@@ -112,13 +121,27 @@ if (Astro.request.method === "POST") {
         const rawData = data.get('batch_data');
         const batchList = JSON.parse(rawData);
         if (batchList && batchList.length > 0) {
-            const stmts = batchList.map(item => {
-                let score = item.bgm_score || 0;
-                return db.prepare("INSERT INTO anime (title, score, bgm_score, status, review, image_url, added_by, director, voice_actors, studio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-                    .bind(item.title, score, item.bgm_score, item.status, item.review, item.image_url, user.id, item.director, item.voice_actors, item.studio);
-            });
-            await db.batch(stmts);
-            message = "✅ 批量导入成功！";
+            const existingAnime = await db.prepare("SELECT title FROM anime").all();
+            const existingTitles = new Set(existingAnime.results.map(a => a.title));
+            const newAnimes = batchList.filter(item => !existingTitles.has(item.title));
+            
+            if (newAnimes.length > 0) {
+                const stmts = newAnimes.map(item => {
+                    let score = item.bgm_score || 0;
+                    return db.prepare("INSERT INTO anime (title, score, bgm_score, status, review, image_url, added_by, director, voice_actors, studio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                        .bind(item.title, score, item.bgm_score, item.status, item.review, item.image_url, user.id, item.director, item.voice_actors, item.studio);
+                });
+                await db.batch(stmts);
+                
+                const skippedCount = batchList.length - newAnimes.length;
+                if (skippedCount > 0) {
+                    message = `✅ 批量导入成功！新增了 ${newAnimes.length} 部番剧，跳过了 ${skippedCount} 部已重复的。`;
+                } else {
+                    message = `✅ 批量导入成功！共新增 ${newAnimes.length} 部番剧。`;
+                }
+            } else {
+                message = "ℹ️ 所选番剧已全部存在，未导入新数据（禁止二次添加）。";
+            }
         }
     } else if (action === 'batch_delete') {
         const rawIds = data.get('batch_ids');
@@ -159,7 +182,8 @@ const { results: rawAnimeList } = await db.prepare(`
 const animeList = rawAnimeList.map(a => ({
   ...a,
   score: a.my_score || '',
-  review: a.my_review || a.review || ''
+  summary: a.review || '',
+  review: a.my_review || ''
 }));
 
 ---
@@ -233,6 +257,7 @@ const animeList = rawAnimeList.map(a => ({
         <form method="POST" id="main-form">
             <input type="hidden" name="action" id="form-action" value="add" />
             <input type="hidden" name="id" id="form-id" />
+            <input type="hidden" name="summary" id="bangumi-summary" />
 
             <input type="text" name="title" id="t" placeholder="番剧名称" required />
             <div style="display:flex; gap:10px;">
@@ -454,7 +479,9 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('bs').value = item.rating && item.rating.score ? item.rating.score : 0;
             document.getElementById('img').value = item.images ? item.images.large || item.images.common : '';
             if (item.summary) {
-                document.getElementById('rv').value = item.summary.substring(0, 500) + "...";
+                document.getElementById('bangumi-summary').value = item.summary.substring(0, 500) + "...";
+            } else {
+                document.getElementById('bangumi-summary').value = "";
             }
             
             document.getElementById('res').style.display = 'none';
@@ -532,6 +559,7 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('vas').value = item.voice_actors || '';
             document.getElementById('std').value = item.studio || '';
             document.getElementById('rv').value = item.review;
+            document.getElementById('bangumi-summary').value = item.summary;
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
@@ -554,6 +582,7 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('submit-btn').innerText = "发布到网站";
             document.getElementById('submit-btn').style.background = "#3dbbee";
             document.getElementById('cancel-btn').style.display = "none";
+            document.getElementById('bangumi-summary').value = "";
             document.getElementById('main-form').reset();
         }
 

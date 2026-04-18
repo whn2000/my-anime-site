@@ -698,7 +698,7 @@ const getStatusTheme = (status) => {
                                         data-dir={anime.director || "未知"}
                                         data-vas={anime.voice_actors || "未知"}
                                         data-std={anime.studio || "未知"}
-                                        data-review={anime.latest_review || anime.review || "暂无评价..."}
+                                        data-summary={anime.review || "暂无简介..."}
                                     >
                                         {anime.title}
                                     </h2>
@@ -957,7 +957,7 @@ const getStatusTheme = (status) => {
                     document.getElementById("m-info").innerText =
                         `综合平均分: ${d.score} / Bangumi: ${d.bgm}`;
                     document.getElementById("m-meta").innerHTML = `
-                    <div style="font-size:0.9rem; margin-bottom:10px; opacity:0.85; border-bottom:1px solid var(--glass-border); padding-bottom:10px;"><i>${d.review}</i></div>
+                    <div style="font-size:0.9rem; margin-bottom:10px; opacity:0.85; border-bottom:1px solid var(--glass-border); padding-bottom:10px;"><i>${d.summary}</i></div>
                     <div><b>🎬 制作：</b> ${d.std}</div>
                     <div><b>🎥 导演：</b> ${d.dir}</div>
                     <div><b>🎙️ 声优：</b> ${d.vas}</div>
