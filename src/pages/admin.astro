@@ -163,6 +163,20 @@ if (Astro.request.method === "POST") {
                 message = `🗑️ 成功批量删除了 ${deletedCount} 条记录`;
             }
         }
+    } else if (action === 'batch_sync') {
+        const rawData = data.get('sync_data');
+        if (rawData) {
+            const syncList = JSON.parse(rawData);
+            if (syncList && syncList.length > 0) {
+                const stmts = syncList.map(item => {
+                    // 只更新bangumi获取的数据，站长和管理员的个人数据(score, review)及全局status均保持不变
+                    return db.prepare("UPDATE anime SET bgm_score = ?, image_url = ?, director = ?, voice_actors = ?, studio = ?, review = ? WHERE id = ?")
+                        .bind(item.bgm_score, item.image_url, item.director, item.voice_actors, item.studio, item.summary, item.id);
+                });
+                await db.batch(stmts);
+                message = `🔄 成功批量更新了 ${syncList.length} 部番剧的 Bangumi 数据！主观信息保持不变。`;
+            }
+        }
     }
   } catch (e) {
     message = "❌ 数据库错误：" + e.message;
@@ -370,6 +384,22 @@ const animeList = rawAnimeList.map(a => ({
         </form>
       </div>
     )}
+
+    <div class="box" style="margin-top: 25px; border-left: 4px solid #f09199;">
+        <h3 style="margin-top:0;">🔄 一键更新 Bangumi 数据</h3>
+        <p style="font-size:12px; color:#666; margin-top:-10px;">遍历所有已收录的番剧并同步 Bangumi 最新海报、评分和简介。仅更新全局设定，自动保留您所填写的状态和个人主观评价。</p>
+        
+        <div id="anime-data" style="display:none;" data-json={JSON.stringify(animeList.map(a => ({id: a.id, title: a.title})))}></div>
+        <button type="button" class="btn-blue" style="background:#f09199;" onclick="startBatchSync()">🔄 一键检测并更新...</button>
+        
+        <div id="sync-progress" style="margin-top:15px; font-size:12px; font-family:monospace; background:#fafafa; padding:10px; border-radius:8px; max-height:200px; overflow-y:auto; border:1px solid #eee; display:none;"></div>
+        
+        <form method="POST" id="sync-form" style="display:none; margin-top:15px; margin-bottom:0px;">
+            <input type="hidden" name="action" value="batch_sync" />
+            <input type="hidden" name="sync_data" id="sync-data-input" />
+            <button type="submit" class="btn-blue" style="background:#52c41a; width:100%; font-size:16px;">💾 获取完毕！点击将上方已同步的数据写入数据库</button>
+        </form>
+    </div>
 
     {user.role === 'owner' && (
       <div class="box" style="margin-top: 25px; border: 1px solid #eef9ff;">
@@ -664,6 +694,83 @@ const animeList = rawAnimeList.map(a => ({
             if(batchList.length > 0) {
                 document.getElementById('batch-data-input').value = JSON.stringify(batchList);
                 document.getElementById('batch-form').style.display = 'block';
+            }
+        }
+
+        async function startBatchSync() {
+            const animeDataNode = document.getElementById('anime-data');
+            if (!animeDataNode) return;
+            const currentAnimes = JSON.parse(animeDataNode.getAttribute('data-json') || '[]');
+            if (currentAnimes.length === 0) return alert("当前没有任何番剧可更新");
+            
+            const prog = document.getElementById('sync-progress');
+            prog.style.display = 'block';
+            prog.innerHTML = '';
+            document.getElementById('sync-form').style.display = 'none';
+            const syncList = [];
+            
+            for (let i = 0; i < currentAnimes.length; i++) {
+                const item = currentAnimes[i];
+                prog.innerHTML += `<div style="color:#555;">⏳ [${i+1}/${currentAnimes.length}] 正在同步：<b>${item.title}</b>...</div>`;
+                prog.scrollTop = prog.scrollHeight;
+                
+                try {
+                    const result = await fetchBangumiSearch(item.title);
+                    if (result.list && result.list.length > 0) {
+                        const bgm = result.list[0];
+                        let dir = '', std = '', vas = '';
+                        try {
+                            const pRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgm.id}/persons`);
+                            const persons = await pRes.json();
+                            if(Array.isArray(persons)){
+                                const d = persons.find(p => p.relation === '导演');
+                                if(d) dir = d.name;
+                                const s = persons.find(p => p.relation === '动画制作');
+                                if(s) std = s.name;
+                            }
+                        } catch(e){}
+                        
+                        try {
+                            const cRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgm.id}/characters`);
+                            const chars = await cRes.json();
+                            if(Array.isArray(chars)){
+                                const actorNames = [];
+                                for(let c of chars) {
+                                    if(c.actors && c.actors.length > 0) actorNames.push(c.actors[0].name);
+                                    if(actorNames.length >= 3) break;
+                                }
+                                vas = actorNames.join(', ');
+                            }
+                        } catch(e){}
+                        
+                        syncList.push({
+                            id: item.id,
+                            bgm_score: (bgm.rating && bgm.rating.score) ? bgm.rating.score : 0,
+                            image_url: bgm.images ? bgm.images.large || bgm.images.common : '',
+                            summary: bgm.summary ? bgm.summary.substring(0, 500) + "..." : "",
+                            director: dir,
+                            studio: std,
+                            voice_actors: vas
+                        });
+                        prog.innerHTML += `<div style="color:#52c41a; margin-bottom:8px;">✅ 更新完毕: <b>${item.title}</b> (Bgm: ${(bgm.rating && bgm.rating.score) ? bgm.rating.score : 0})</div>`;
+                    } else {
+                        prog.innerHTML += `<div style="color:#faad14; margin-bottom:8px;">⚠️ 无法找到对应数据，跳过: ${item.title}</div>`;
+                    }
+                } catch(e) {
+                    prog.innerHTML += `<div style="color:#f5222d; margin-bottom:8px;">❌ 网络中断，跳过更新: ${item.title}</div>`;
+                }
+                
+                prog.scrollTop = prog.scrollHeight;
+                // 防止封IP，严格限速延迟
+                await new Promise(r => setTimeout(r, 600)); 
+            }
+            
+            prog.innerHTML += `<div style="color:#1890ff; margin-top:10px;">🎉 全部处理完毕！共已获取 ${syncList.length} 条番剧的最新 Bangumi 数据。</div>`;
+            prog.scrollTop = prog.scrollHeight;
+            
+            if(syncList.length > 0) {
+                document.getElementById('sync-data-input').value = JSON.stringify(syncList);
+                document.getElementById('sync-form').style.display = 'block';
             }
         }
     </script>
