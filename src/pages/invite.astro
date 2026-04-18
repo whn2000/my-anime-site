@@ -1,0 +1,358 @@
+---
+export const prerender = false;
+import { env } from "cloudflare:workers";
+import { getCurrentUser, generateInviteCode, hasRole, getRoleLabel } from "../lib/auth.js";
+
+const db = env.DB;
+const user = await getCurrentUser(db, Astro.cookies);
+
+// 仅站长可访问
+if (!user || !hasRole(user, ['owner'])) {
+  return Astro.redirect("/login");
+}
+
+let message = "";
+let messageType = "success";
+
+if (Astro.request.method === "POST") {
+  const data = await Astro.request.formData();
+  const action = data.get("action");
+
+  if (action === "generate") {
+    const code = generateInviteCode();
+    try {
+      await db.prepare(
+        "INSERT INTO invitations (code, role, created_by) VALUES (?, 'admin', ?)"
+      ).bind(code, user.id).run();
+      message = `✅ 邀请码已生成：${code}`;
+    } catch (e) {
+      message = "❌ 生成失败：" + e.message;
+      messageType = "error";
+    }
+  } else if (action === "delete") {
+    const codeId = data.get("code_id");
+    try {
+      await db.prepare("DELETE FROM invitations WHERE id = ? AND is_used = 0").bind(codeId).run();
+      message = "🗑️ 邀请码已删除";
+    } catch (e) {
+      message = "❌ 删除失败";
+      messageType = "error";
+    }
+  }
+}
+
+// 获取所有邀请码
+const { results: invitations } = await db.prepare(
+  "SELECT * FROM invitations ORDER BY created_at DESC"
+).all();
+
+const siteUrl = Astro.url.origin;
+---
+
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>邀请码管理 - MyAnimeList</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif;
+            min-height: 100vh;
+            background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            padding: 40px 20px;
+            color: #2d3436;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        .container {
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: rgba(255, 255, 255, 0.88);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+            animation: slideUp 0.5s ease;
+        }
+
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 { font-size: 1.5rem; }
+
+        .nav-links {
+            display: flex;
+            gap: 15px;
+            font-size: 0.85rem;
+        }
+
+        .nav-links a {
+            color: #636e72;
+            text-decoration: none;
+            transition: 0.2s;
+        }
+
+        .nav-links a:hover { color: #e73c7e; }
+
+        .message {
+            padding: 14px 18px;
+            border-radius: 14px;
+            margin-bottom: 20px;
+            font-size: 0.9rem;
+            font-weight: 500;
+        }
+
+        .message.success { background: rgba(0, 184, 148, 0.1); color: #00b894; }
+        .message.error { background: rgba(214, 48, 49, 0.1); color: #d63031; }
+
+        .generate-section {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 35px;
+            align-items: center;
+        }
+
+        .gen-btn {
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #f09199, #e73c7e);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-size: 0.95rem;
+            font-weight: 700;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.3s;
+            white-space: nowrap;
+        }
+
+        .gen-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(231, 60, 126, 0.3);
+        }
+
+        .gen-hint {
+            font-size: 0.82rem;
+            color: #636e72;
+            line-height: 1.5;
+        }
+
+        .divider {
+            border: none;
+            border-top: 1px solid rgba(0, 0, 0, 0.06);
+            margin: 25px 0;
+        }
+
+        .invite-list h3 {
+            font-size: 1rem;
+            margin-bottom: 15px;
+            color: #636e72;
+        }
+
+        .invite-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 18px;
+            background: rgba(0, 0, 0, 0.02);
+            border-radius: 14px;
+            margin-bottom: 10px;
+            transition: 0.2s;
+        }
+
+        .invite-item:hover {
+            background: rgba(0, 0, 0, 0.04);
+        }
+
+        .invite-code {
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            font-size: 0.95rem;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+
+        .invite-meta {
+            font-size: 0.75rem;
+            color: #b2bec3;
+            margin-top: 4px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 10px;
+            border-radius: 8px;
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-active {
+            background: rgba(0, 184, 148, 0.15);
+            color: #00b894;
+        }
+
+        .badge-used {
+            background: rgba(99, 110, 114, 0.1);
+            color: #636e72;
+        }
+
+        .invite-actions {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .copy-btn, .del-btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.78rem;
+            font-family: inherit;
+            cursor: pointer;
+            transition: 0.2s;
+            font-weight: 600;
+        }
+
+        .copy-btn {
+            background: rgba(9, 132, 227, 0.1);
+            color: #0984e3;
+        }
+
+        .copy-btn:hover { background: rgba(9, 132, 227, 0.2); }
+
+        .del-btn {
+            background: rgba(214, 48, 49, 0.08);
+            color: #d63031;
+        }
+
+        .del-btn:hover { background: rgba(214, 48, 49, 0.15); }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #b2bec3;
+            font-size: 0.9rem;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            .card {
+                background: rgba(30, 30, 30, 0.92);
+                border-color: rgba(255, 255, 255, 0.08);
+            }
+            .header h1, .invite-code { color: #f5f5f7; }
+            .invite-item { background: rgba(255, 255, 255, 0.04); }
+            .invite-item:hover { background: rgba(255, 255, 255, 0.06); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <h1>🎟️ 邀请码管理</h1>
+                <div class="nav-links">
+                    <a href="/">首页</a>
+                    <a href="/admin">管理后台</a>
+                    <a href="/logout">登出</a>
+                </div>
+            </div>
+
+            {message && <div class={`message ${messageType}`}>{message}</div>}
+
+            <div class="generate-section">
+                <form method="POST">
+                    <input type="hidden" name="action" value="generate" />
+                    <button type="submit" class="gen-btn">+ 生成新邀请码</button>
+                </form>
+                <p class="gen-hint">生成的邀请码可用于邀请新管理员注册，每个邀请码仅能使用一次</p>
+            </div>
+
+            <hr class="divider" />
+
+            <div class="invite-list">
+                <h3>已生成的邀请码 ({invitations.length})</h3>
+
+                {invitations.length === 0 && (
+                    <div class="empty-state">
+                        🎫 暂无邀请码，点击上方按钮生成
+                    </div>
+                )}
+
+                {invitations.map(inv => (
+                    <div class="invite-item">
+                        <div>
+                            <div class="invite-code">{inv.code}</div>
+                            <div class="invite-meta">
+                                {inv.is_used
+                                    ? `已被 ${inv.used_by || '未知'} 使用`
+                                    : `创建于 ${new Date(inv.created_at + 'Z').toLocaleDateString('zh-CN')}`
+                                }
+                            </div>
+                        </div>
+                        <div class="invite-actions">
+                            {inv.is_used ? (
+                                <span class="badge badge-used">已使用</span>
+                            ) : (
+                                <>
+                                    <span class="badge badge-active">可用</span>
+                                    <button
+                                        type="button"
+                                        class="copy-btn"
+                                        data-link={`${siteUrl}/register?code=${inv.code}`}
+                                        onclick="copyLink(this)"
+                                    >复制链接</button>
+                                    <form method="POST" style="margin:0; display:inline;">
+                                        <input type="hidden" name="action" value="delete" />
+                                        <input type="hidden" name="code_id" value={inv.id} />
+                                        <button type="submit" class="del-btn" onclick="return confirm('确定删除？')">删除</button>
+                                    </form>
+                                </>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    </div>
+
+    <script is:inline>
+        function copyLink(btn) {
+            const link = btn.dataset.link;
+            navigator.clipboard.writeText(link).then(() => {
+                const original = btn.textContent;
+                btn.textContent = '已复制!';
+                btn.style.background = 'rgba(0,184,148,0.15)';
+                btn.style.color = '#00b894';
+                setTimeout(() => {
+                    btn.textContent = original;
+                    btn.style.background = '';
+                    btn.style.color = '';
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>

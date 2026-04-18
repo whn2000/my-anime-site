@@ -1,7 +1,22 @@
 ---
+export const prerender = false;
 import { env } from "cloudflare:workers";
+import { getCurrentUser, getRoleLabel, hasRole } from "../lib/auth.js";
+
 const db = env.DB;
-const { results: animeList } = await db.prepare("SELECT * FROM anime ORDER BY id DESC").all();
+
+// 获取当前登录用户
+const currentUser = await getCurrentUser(db, Astro.cookies);
+
+// 获取番剧列表，包含平均分和最新一条精选评价
+const { results: animeList } = await db.prepare(`
+  SELECT a.*, 
+    (SELECT ROUND(AVG(score), 1) FROM anime_scores WHERE anime_id = a.id) as avg_score,
+    (SELECT COUNT(*) FROM anime_scores WHERE anime_id = a.id) as score_count,
+    (SELECT review FROM anime_scores WHERE anime_id = a.id AND review IS NOT NULL AND review != '' ORDER BY created_at DESC LIMIT 1) as latest_review
+  FROM anime a 
+  ORDER BY a.id DESC
+`).all();
 
 const getStatusTheme = (status) => {
     const map = {
@@ -51,12 +66,50 @@ const getStatusTheme = (status) => {
             100% { background-position: 0% 50%; }
         }
 
+        /* 导航栏 */
+        .navbar {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 100;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            padding: 10px 20px;
+            border-radius: 100px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        .navbar a {
+            color: white;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: 0.2s;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        }
+
+        .navbar a:hover { color: var(--primary); }
+
+        .navbar .user-badge {
+            background: white;
+            color: #e73c7e;
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 0.8rem;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            text-shadow: none;
+        }
+
         /* 2. 布局容器 */
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 60px 20px;
-            backdrop-filter: blur(10px); /* 整体背景微糊，增加高级感 */
+            padding: 80px 20px 60px;
+            backdrop-filter: blur(10px);
         }
 
         .header {
@@ -143,21 +196,45 @@ const getStatusTheme = (status) => {
         /* 4. 详情弹窗美化 */
         dialog {
             border: none; border-radius: 30px; padding: 0;
-            width: 90%; max-width: 600px;
+            width: 90%; max-width: 800px;
             background: var(--glass); backdrop-filter: blur(25px);
             box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
         }
 
         dialog::backdrop { background: rgba(0,0,0,0.4); backdrop-filter: blur(8px); }
 
-        .modal-body { padding: 40px; position: relative; }
-        .modal-img { width: 100%; border-radius: 20px; margin-bottom: 25px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); }
+        .modal-body { 
+            padding: 40px; position: relative; 
+            max-height: 85vh; overflow-y: auto;
+        }
+        
+        .modal-header-sec { display: flex; gap: 20px; margin-bottom: 30px; }
+        .modal-img { width: 180px; height: 260px; object-fit: cover; border-radius: 16px; box-shadow: 0 10px 20px rgba(0,0,0,0.15); flex-shrink: 0; }
+        .modal-info-wrap { flex-grow: 1; }
+        
         .close-btn { 
             position: absolute; top: 20px; right: 20px; 
             background: white; border: none; width: 40px; height: 40px; 
             border-radius: 50%; font-size: 1.2rem; cursor: pointer;
             box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
+
+        /* 评分和评论区样式 */
+        .section-title { font-size: 1.1rem; font-weight: 700; margin: 20px 0 10px; border-bottom: 2px solid rgba(0,0,0,0.05); padding-bottom: 8px; }
+        
+        .score-item { background: rgba(255,255,255,0.5); padding: 12px 15px; border-radius: 12px; margin-bottom: 10px; }
+        .score-header { display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 5px; }
+        .user-tag { background: #3dbbee; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
+        .owner-tag { background: #f09199; color: white; padding: 2px 6px; border-radius: 4px; font-size: 10px; margin-left: 5px; }
+        
+        .comment-item { background: rgba(0,0,0,0.03); padding: 15px; border-radius: 12px; margin-bottom: 12px; position: relative; }
+        .comment-meta { font-size: 0.8rem; color: #636e72; margin-bottom: 6px; }
+        .comment-text { font-size: 0.95rem; line-height: 1.5; }
+        .del-comment-btn { position: absolute; top: 15px; right: 15px; background: none; border: none; color: #d63031; cursor: pointer; font-size: 0.8rem; }
+
+        .comment-form { margin-top: 20px; }
+        .comment-textarea { width: 100%; border: 1px solid rgba(0,0,0,0.1); border-radius: 12px; padding: 15px; font-family: inherit; resize: vertical; background: rgba(255,255,255,0.8); }
+        .comment-btn { background: #2d3436; color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; }
 
         .footer { text-align: center; margin-top: 80px; padding: 40px; color: white; opacity: 0.7; }
 
@@ -167,9 +244,26 @@ const getStatusTheme = (status) => {
             from { opacity: 0; transform: translateY(30px); }
             to { opacity: 1; transform: translateY(0); }
         }
+        
+        #loading-indicator { text-align: center; color: #666; padding: 20px; }
     </style>
 </head>
 <body>
+    <div class="navbar">
+        {currentUser ? (
+            <>
+                <div class="user-badge">{currentUser.username} ({getRoleLabel(currentUser.role)})</div>
+                {hasRole(currentUser, ['owner', 'admin']) && <a href="/admin">管理后台</a>}
+                <a href="/logout">登出</a>
+            </>
+        ) : (
+            <>
+                <a href="/login">登录</a>
+                <a href="/register">注册</a>
+            </>
+        )}
+    </div>
+
     <div class="container">
         <header class="header">
             <h1>我的追番列表 📺</h1>
@@ -185,21 +279,21 @@ const getStatusTheme = (status) => {
                             <span class="status-badge" style={`background: ${theme.bg}; color: ${theme.color}; border: 1px solid ${theme.color}`}>
                                 {anime.status}
                             </span>
-                            <img src={anime.image_url} alt={anime.title} class="cover" />
+                            <img src={anime.image_url} loading="lazy" alt={anime.title} class="cover" />
                         </div>
                         <div class="content">
                             <h2 class="title" 
+                                data-id={anime.id}
                                 data-title={anime.title} 
-                                data-review={anime.review} 
                                 data-img={anime.image_url}
-                                data-score={anime.score}
+                                data-score={anime.avg_score || '暂无'}
                                 data-bgm={anime.bgm_score}
                             >{anime.title}</h2>
                             <div class="scores">
-                                <span class="score-pill" style="color: #fd9644;">⭐ 我评: {anime.score}</span>
+                                <span class="score-pill" style="color: #fd9644;">⭐ 平均分: {anime.avg_score || '-'}</span>
                                 <span class="score-pill" style="color: #a29bfe;">📍 AniList: {anime.bgm_score}</span>
                             </div>
-                            <p class="review">{anime.review}</p>
+                            <p class="review">{anime.latest_review || '暂无评价...'}</p>
                         </div>
                     </div>
                 );
@@ -211,32 +305,179 @@ const getStatusTheme = (status) => {
         </footer>
     </div>
 
+    <!-- 弹窗 -->
     <dialog id="detail-modal">
         <div class="modal-body">
             <button class="close-btn" id="close-modal">✕</button>
-            <img id="m-img" class="modal-img" src="" alt="" />
-            <h2 id="m-title" style="margin-bottom: 10px;"></h2>
-            <div id="m-info" style="margin-bottom: 20px; font-weight: bold; color: var(--primary);"></div>
-            <p id="m-review" style="line-height: 1.8; opacity: 0.9;"></p>
+            
+            <div class="modal-header-sec">
+                <img id="m-img" class="modal-img" src="" alt="" />
+                <div class="modal-info-wrap">
+                    <h2 id="m-title" style="margin-bottom: 10px; font-size:1.8rem;"></h2>
+                    <div id="m-info" style="margin-bottom: 20px; font-weight: bold; color: var(--primary);"></div>
+                    
+                    <div class="section-title">✨ 管理员独立评分</div>
+                    <div id="m-scores-list"></div>
+                </div>
+            </div>
+
+            <div class="section-title">💬 讨论区</div>
+            <div id="loading-indicator" style="display:none;">加载中...</div>
+            <div id="m-comments-list"></div>
+
+            <div class="comment-form">
+                <textarea id="comment-input" class="comment-textarea" rows="3" placeholder={currentUser ? "写下你的评论..." : "请先登录后再发表评论"} disabled={!currentUser}></textarea>
+                <button id="submit-comment" class="comment-btn" disabled={!currentUser}>
+                    {currentUser ? "发表评论" : "去登录"}
+                </button>
+            </div>
         </div>
     </dialog>
 
-    <script>
+    <script define:vars={{ currentUser }}>
         const modal = document.getElementById('detail-modal');
         const closeBtn = document.getElementById('close-modal');
+        let currentAnimeId = null;
 
+        // 获取评论和评分数据
+        async function fetchComments(animeId) {
+            document.getElementById('loading-indicator').style.display = 'block';
+            document.getElementById('m-scores-list').innerHTML = '';
+            document.getElementById('m-comments-list').innerHTML = '';
+
+            try {
+                const res = await fetch(`/api/comments?anime_id=${animeId}`);
+                const data = await res.json();
+                
+                renderScores(data.scores);
+                renderComments(data.comments, data.currentUser);
+            } catch (e) {
+                console.error("加载失败", e);
+            } finally {
+                document.getElementById('loading-indicator').style.display = 'none';
+            }
+        }
+
+        function getRoleTagHTML(role) {
+            if (role === 'owner') return `<span class="owner-tag">站长</span>`;
+            if (role === 'admin') return `<span class="user-tag">管理员</span>`;
+            return '';
+        }
+
+        // 渲染管理员评分
+        function renderScores(scores) {
+            const container = document.getElementById('m-scores-list');
+            if (!scores || scores.length === 0) {
+                container.innerHTML = '<div style="color:#999; font-size:0.9rem;">暂无评分</div>';
+                return;
+            }
+
+            container.innerHTML = scores.map(s => `
+                <div class="score-item">
+                    <div class="score-header">
+                        <div><b>${s.username}</b> ${getRoleTagHTML(s.role)}</div>
+                        <div style="color: #fd9644; font-weight:bold;">⭐ ${s.score}</div>
+                    </div>
+                    ${s.review ? `<div style="font-size:0.9rem; margin-top:5px; color:#555;">${s.review}</div>` : ''}
+                </div>
+            `).join('');
+        }
+
+        // 渲染评论列表
+        function renderComments(comments, user) {
+            const container = document.getElementById('m-comments-list');
+            if (!comments || comments.length === 0) {
+                container.innerHTML = '<div style="color:#999; font-size:0.9rem; margin-bottom: 20px;">还没有人评论，快来抢沙发！</div>';
+                return;
+            }
+
+            container.innerHTML = comments.map(c => {
+                const canDelete = user && (user.role === 'owner' || user.role === 'admin' || user.id === c.user_id);
+                return `
+                <div class="comment-item">
+                    <div class="comment-meta">
+                        <b>${c.username}</b> ${getRoleTagHTML(c.role)}
+                        <span style="margin-left:10px; opacity:0.7;">${new Date(c.created_at + 'Z').toLocaleString('zh-CN')}</span>
+                    </div>
+                    <div class="comment-text">${c.content}</div>
+                    ${canDelete ? `<button class="del-comment-btn" onclick="deleteComment(${c.id})">删除</button>` : ''}
+                </div>
+            `;
+            }).join('');
+        }
+
+        // 提交评论
+        document.getElementById('submit-comment').addEventListener('click', async () => {
+            if (!currentUser) {
+                window.location.href = '/login';
+                return;
+            }
+
+            const input = document.getElementById('comment-input');
+            const content = input.value.trim();
+            if (!content) return alert("评论内容不能为空");
+
+            try {
+                const res = await fetch('/api/comments', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ anime_id: currentAnimeId, content })
+                });
+                
+                const data = await res.json();
+                if (res.ok) {
+                    input.value = '';
+                    fetchComments(currentAnimeId); // 刷新
+                } else {
+                    alert(data.error || "评论失败");
+                }
+            } catch (e) {
+                alert("网络错误");
+            }
+        });
+
+        // 删除评论 (暴露给全局因为它在生成的 HTML 中被调用)
+        window.deleteComment = async function(commentId) {
+            if (!confirm('确定删除这条评论吗？')) return;
+            try {
+                const res = await fetch('/api/comments', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ comment_id: commentId })
+                });
+                if (res.ok) {
+                    fetchComments(currentAnimeId);
+                } else {
+                    const data = await res.json();
+                    alert(data.error || "删除失败");
+                }
+            } catch (e) {
+                alert("网络错误");
+            }
+        };
+
+        // 绑定点击事件打开弹窗
         document.querySelectorAll('.title').forEach(btn => {
             btn.addEventListener('click', () => {
                 const d = btn.dataset;
+                currentAnimeId = d.id;
                 document.getElementById('m-img').src = d.img;
                 document.getElementById('m-title').innerText = d.title;
-                document.getElementById('m-info').innerText = `⭐ 评分: ${d.score} / AniList: ${d.bgm}`;
-                document.getElementById('m-review').innerText = d.review || "暂无评论";
+                document.getElementById('m-info').innerText = `综合平均分: ${d.score} / AniList: ${d.bgm}`;
+                
+                // 重置容器并请求数据
+                document.getElementById('m-scores-list').innerHTML = '';
+                document.getElementById('m-comments-list').innerHTML = '';
+                fetchComments(currentAnimeId);
+                
                 modal.showModal();
             });
         });
 
-        closeBtn.onclick = () => modal.close();
+        closeBtn.onclick = () => {
+            modal.close();
+            currentAnimeId = null;
+        };
         modal.addEventListener('click', (e) => e.target === modal && modal.close());
     </script>
 </body>

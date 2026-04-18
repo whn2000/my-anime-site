@@ -1,8 +1,16 @@
 ---
 export const prerender = false;
 import { env } from "cloudflare:workers";
+import { getCurrentUser, hasRole, getRoleLabel } from "../lib/auth.js";
 
 const db = env.DB;
+const user = await getCurrentUser(db, Astro.cookies);
+
+// 权限保护：仅站长和管理员可访问
+if (!user || !hasRole(user, ['owner', 'admin'])) {
+  return Astro.redirect("/login");
+}
+
 let message = "";
 
 // 1. 处理数据库操作（新增、删除、更新）
@@ -12,58 +20,121 @@ if (Astro.request.method === "POST") {
     const action = data.get("action");
 
     if (action === "add") {
-      await db.prepare(
-        "INSERT INTO anime (title, score, bgm_score, status, review, image_url) VALUES (?, ?, ?, ?, ?, ?)"
+      // 先插入全局番剧信息
+      const result = await db.prepare(
+        "INSERT INTO anime (title, bgm_score, status, image_url, added_by) VALUES (?, ?, ?, ?, ?)"
       ).bind(
         data.get("title"), 
-        data.get("score"), 
         data.get("bgm_score"), 
         data.get("status"), 
-        data.get("review"), 
-        data.get("image_url")
+        data.get("image_url"),
+        user.id
       ).run();
+      
+      const animeId = result.meta.last_row_id;
+
+      // 插入个人独立评分
+      await db.prepare(
+        "INSERT INTO anime_scores (anime_id, user_id, score, review) VALUES (?, ?, ?, ?)"
+      ).bind(
+        animeId,
+        user.id,
+        data.get("score"),
+        data.get("review")
+      ).run();
+
       message = "✅ 发布成功！";
     } else if (action === "update") {
+      const animeId = data.get("id");
+      // 更新全局信息
       await db.prepare(
-        "UPDATE anime SET title = ?, score = ?, bgm_score = ?, status = ?, review = ?, image_url = ? WHERE id = ?"
+        "UPDATE anime SET title = ?, bgm_score = ?, status = ?, image_url = ? WHERE id = ?"
       ).bind(
         data.get("title"), 
-        data.get("score"), 
         data.get("bgm_score"), 
         data.get("status"), 
-        data.get("review"), 
         data.get("image_url"),
-        data.get("id")
+        animeId
       ).run();
+
+      // 更新个人评分（UPSERT 功能）
+      await db.prepare(`
+        INSERT INTO anime_scores (anime_id, user_id, score, review)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(anime_id, user_id) 
+        DO UPDATE SET score = excluded.score, review = excluded.review
+      `).bind(
+        animeId,
+        user.id,
+        data.get("score"),
+        data.get("review")
+      ).run();
+
       message = "✨ 信息已更新！";
     } else if (action === "delete") {
-      await db.prepare("DELETE FROM anime WHERE id = ?").bind(data.get("id")).run();
-      message = "🗑️ 记录已删除";
+      const animeId = data.get("id");
+      // 检查权限：只有添加者或站长可以删除整部番剧
+      const anime = await db.prepare("SELECT * FROM anime WHERE id = ?").bind(animeId).first();
+      
+      if (anime) {
+        if (user.role === 'owner' || anime.added_by === user.id) {
+          // 删除关联评分、评论和番剧
+          await db.prepare("DELETE FROM anime_scores WHERE anime_id = ?").bind(animeId).run();
+          await db.prepare("DELETE FROM comments WHERE anime_id = ?").bind(animeId).run();
+          await db.prepare("DELETE FROM anime WHERE id = ?").bind(animeId).run();
+          message = "🗑️ 记录已彻底删除";
+        } else {
+          message = "❌ 您没有权限删除此番剧，只有添加者或站长可删除全局记录。您可以删除自己的评分。";
+        }
+      }
+    } else if (action === "delete_score") {
+      const animeId = data.get("id");
+      await db.prepare("DELETE FROM anime_scores WHERE anime_id = ? AND user_id = ?").bind(animeId, user.id).run();
+      message = "🗑️ 您的个人评分已删除";
     }
   } catch (e) {
     message = "❌ 数据库错误：" + e.message;
   }
 }
 
-// 2. 获取完整番剧列表以供编辑 
-const { results: animeList } = await db.prepare("SELECT * FROM anime ORDER BY id DESC").all();
+// 2. 获取完整番剧列表以供编辑，包含当前用户的评分
+const { results: rawAnimeList } = await db.prepare(`
+  SELECT a.*, 
+    (SELECT score FROM anime_scores WHERE anime_id = a.id AND user_id = ?) as my_score,
+    (SELECT review FROM anime_scores WHERE anime_id = a.id AND user_id = ?) as my_review
+  FROM anime a 
+  ORDER BY a.id DESC
+`).bind(user.id, user.id).all();
+
+// 简单的转换以适应前端变量名
+const animeList = rawAnimeList.map(a => ({
+  ...a,
+  score: a.my_score || '',
+  review: a.my_review || ''
+}));
+
 ---
 
 <html lang="zh-CN">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>管理后台 - 增强版</title>
+    <title>管理后台 - MyAnimeList</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <style>
         :root { --main: #3dbbee; --edit: #f09199; }
-        body { font-family: sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
         .box { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
+        .user-info { font-size: 14px; color: #666; }
+        .user-badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; background: #eef9ff; color: var(--main); }
+        .nav-links a { color: var(--main); text-decoration: none; font-size: 14px; margin-left: 15px; }
         .search-area { background: #eef9ff; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
         .res-box { border: 1px solid #eee; border-radius: 8px; display: none; margin-top: 10px; background: white; max-height: 300px; overflow-y: auto; }
         .item { display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; gap: 10px; }
         .item:hover { background: #f0faff; }
-        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
+        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; font-family: inherit; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-family: inherit; }
         .btn-blue { background: var(--main); color: white; }
         .btn-ghost { background: #eee; color: #666; margin-top: 5px; font-size: 12px; }
         .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f9f9f9; }
@@ -72,9 +143,20 @@ const { results: animeList } = await db.prepare("SELECT * FROM anime ORDER BY id
 </head>
 <body>
     <div class="box">
-        <a href="/" style="color:#999; font-size:14px; text-decoration:none;">← 返回首页</a>
+        <div class="header-bar">
+            <div class="user-info">
+                <span>👤 {user.username}</span>
+                <span class="user-badge">{getRoleLabel(user.role)}</span>
+            </div>
+            <div class="nav-links">
+                <a href="/">返回首页</a>
+                {user.role === 'owner' && <a href="/invite" style="color: #f09199;">🎟️ 邀请码设置</a>}
+                <a href="/logout" style="color: #999;">退出</a>
+            </div>
+        </div>
+
         <h1 id="form-title">添加新番剧</h1>
-        {message && <p style="color: #3dbbee; text-align:center; font-weight:bold;">{message}</p>}
+        {message && <p style="color: #3dbbee; text-align:center; font-weight:bold; margin-bottom:15px; padding:10px; background:#eef9ff; border-radius:8px;">{message}</p>}
 
         <div class="search-area" id="search-section">
             <label style="font-size:12px; color:#666;">第一步：从网络搜索填充 (可选)</label>
@@ -85,13 +167,13 @@ const { results: animeList } = await db.prepare("SELECT * FROM anime ORDER BY id
             <div id="res" class="res-box"></div>
         </div>
 
-        <form method="POST" action="/admin" id="main-form">
+        <form method="POST" id="main-form">
             <input type="hidden" name="action" id="form-action" value="add" />
             <input type="hidden" name="id" id="form-id" />
 
             <input type="text" name="title" id="t" placeholder="番剧名称" required />
             <div style="display:flex; gap:10px;">
-                <input type="number" step="0.1" name="score" id="s" placeholder="我的评分" required />
+                <input type="number" step="0.1" name="score" id="s" placeholder="我的独立评分 (10分制)" required />
                 <input type="number" step="0.1" name="bgm_score" id="bs" placeholder="官方评分" readonly style="background:#f9f9f9" />
             </div>
             <select name="status" id="st">
@@ -101,34 +183,46 @@ const { results: animeList } = await db.prepare("SELECT * FROM anime ORDER BY id
                 <option value="弃番">弃番</option>
             </select>
             <input type="url" name="image_url" id="img" placeholder="图片 URL" />
-            <textarea name="review" id="rv" placeholder="你的评价..." rows="4"></textarea>
+            <textarea name="review" id="rv" placeholder="我的独立评价..." rows="4"></textarea>
             
-            <button type="submit" class="btn-blue" id="submit-btn">发布到网站</button>
+            <button type="submit" class="btn-blue" id="submit-btn" style="margin-top:10px;">发布到网站</button>
             <button type="button" class="btn-ghost" id="cancel-btn" style="display:none;" onclick="resetToAdd()">取消修改 / 返回新增</button>
         </form>
 
         <hr style="margin:40px 0; border:none; border-top:1px solid #eee;" />
         
         <h3>已记录的番剧 ({animeList.length})</h3>
+        <p style="font-size:12px; color:#999; margin-bottom:15px;">你可以为所有番剧添加独立评分。若要删除整部番剧（包括他人的评分/评论），仅限添加者或站长操作。</p>
+        
         <div id="anime-list">
             {animeList.map(i => (
                 <div class="list-item">
                     <div>
                         <span style="font-size:14px; font-weight:500;">{i.title}</span>
                         <span class="badge">{i.status}</span>
+                        {i.score ? <span style="font-size:12px; color:var(--main); margin-left:5px;">我的评分: {i.score}</span> : <span style="font-size:12px; color:#ccc; margin-left:5px;">未评分</span>}
                     </div>
-                    <div style="display:flex; gap:15px;">
+                    <div style="display:flex; gap:10px;">
                         <button 
                             type="button" 
                             style="color:var(--main); background:none; border:none; cursor:pointer; font-size:13px;"
                             onclick={`prepareEdit(${JSON.stringify(i)})`}
-                        >编辑</button>
+                        >{i.score ? '编辑' : '评分'}</button>
                         
-                        <form method="POST" action="/admin" style="margin:0;">
-                            <input type="hidden" name="action" value="delete" />
-                            <input type="hidden" name="id" value={i.id} />
-                            <button type="submit" style="color:#ff4d4f; background:none; border:none; cursor:pointer; font-size:13px;" onclick="return confirm('确定要永久删除这条记录吗？')">删除</button>
-                        </form>
+                        {(user.role === 'owner' || i.added_by === user.id) && (
+                            <form method="POST" style="margin:0;">
+                                <input type="hidden" name="action" value="delete" />
+                                <input type="hidden" name="id" value={i.id} />
+                                <button type="submit" style="color:#ff4d4f; background:none; border:none; cursor:pointer; font-size:13px;" onclick="return confirm('警告：这是全站删除！确定要永久删除整部番剧及其所有评分和评论吗？')">全局删除</button>
+                            </form>
+                        )}
+                        {(! (user.role === 'owner' || i.added_by === user.id)) && i.score && (
+                            <form method="POST" style="margin:0;">
+                                <input type="hidden" name="action" value="delete_score" />
+                                <input type="hidden" name="id" value={i.id} />
+                                <button type="submit" style="color:#ff4d4f; background:none; border:none; cursor:pointer; font-size:13px;" onclick="return confirm('确定要删除您的个人评分吗？')">删评分</button>
+                            </form>
+                        )}
                     </div>
                 </div>
             ))}
@@ -185,12 +279,12 @@ const { results: animeList } = await db.prepare("SELECT * FROM anime ORDER BY id
             document.getElementById('form-title').innerText = "正在编辑：" + item.title;
             document.getElementById('form-action').value = "update";
             document.getElementById('form-id').value = item.id;
-            document.getElementById('submit-btn').innerText = "保存修改";
+            document.getElementById('submit-btn').innerText = "保存我的评分及番剧信息";
             document.getElementById('submit-btn').style.background = "#f09199";
             document.getElementById('cancel-btn').style.display = "block";
             
             document.getElementById('t').value = item.title;
-            document.getElementById('s').value = item.score;
+            document.getElementById('s').value = item.score; // 可能是空的
             document.getElementById('bs').value = item.bgm_score;
             document.getElementById('st').value = item.status;
             document.getElementById('img').value = item.image_url;

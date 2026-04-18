@@ -1,0 +1,11 @@
+---
+export const prerender = false;
+import { env } from "cloudflare:workers";
+import { destroySession, clearSessionCookie } from "../lib/auth.js";
+
+const db = env.DB;
+await destroySession(db, Astro.cookies);
+clearSessionCookie(Astro.cookies);
+
+return Astro.redirect("/");
+---
