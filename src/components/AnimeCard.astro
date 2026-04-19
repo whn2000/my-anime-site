@@ -62,20 +62,42 @@ const progressPct = totalEps > 0 ? Math.round((progress / totalEps) * 100) : 0;
         </div>
 
         {showProgress && (
-            <div class="progress-wrap" data-anime-id={anime.id}>
+            <div class="progress-wrap" data-anime-id={anime.id} data-total={totalEps}>
                 <div class="progress-info">
                     <span class="progress-label">📺 进度: <b id={`prog-text-${anime.id}`}>{progress}</b> / {totalEps} 集</span>
                     {isAdmin && (
-                        <button
-                            class="progress-btn"
-                            data-anime-id={anime.id}
-                            title="看完一集，点我 +1"
-                            aria-label="增加一集进度"
-                        >+1</button>
+                        <div class="progress-btns">
+                            <button
+                                class="progress-btn progress-dec"
+                                data-anime-id={anime.id}
+                                data-action="decrement"
+                                title="回退一集 -1"
+                                aria-label="减少一集进度"
+                            >−1</button>
+                            <button
+                                class="progress-btn progress-inc"
+                                data-anime-id={anime.id}
+                                data-action="increment"
+                                title="看完一集 +1"
+                                aria-label="增加一集进度"
+                            >+1</button>
+                        </div>
                     )}
                 </div>
-                <div class="progress-bar-bg">
+                <div class="progress-bar-bg" id={`prog-track-${anime.id}`}>
                     <div class="progress-bar-fill" id={`prog-bar-${anime.id}`} style={`width: ${progressPct}%`}></div>
+                    {isAdmin && (
+                        <input
+                            type="range"
+                            class="progress-slider"
+                            id={`prog-slider-${anime.id}`}
+                            data-anime-id={anime.id}
+                            min="0"
+                            max={totalEps}
+                            value={progress}
+                            aria-label="拖动设置观看进度"
+                        />
+                    )}
                 </div>
             </div>
         )}
