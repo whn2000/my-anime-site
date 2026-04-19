@@ -39,7 +39,7 @@ if (Astro.request.method === "POST") {
       } else {
           // 先插入全局番剧信息
           const result = await db.prepare(
-            "INSERT INTO anime (title, bgm_score, status, image_url, added_by, director, voice_actors, studio, review) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            "INSERT INTO anime (title, bgm_score, status, image_url, added_by, director, voice_actors, studio, review, total_episodes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
           ).bind(
             incomingTitle, 
             data.get("bgm_score"), 
@@ -49,7 +49,8 @@ if (Astro.request.method === "POST") {
             data.get("director"),
             data.get("voice_actors"),
             data.get("studio"),
-            data.get("summary")
+            data.get("summary"),
+            data.get("total_episodes") || 0
           ).run();
           
           const animeId = result.meta.last_row_id;
@@ -128,8 +129,8 @@ if (Astro.request.method === "POST") {
             if (newAnimes.length > 0) {
                 const stmts = newAnimes.map(item => {
                     let score = item.bgm_score || 0;
-                    return db.prepare("INSERT INTO anime (title, score, bgm_score, status, review, image_url, added_by, director, voice_actors, studio) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
-                        .bind(item.title, score, item.bgm_score, item.status, item.review, item.image_url, user.id, item.director, item.voice_actors, item.studio);
+                    return db.prepare("INSERT INTO anime (title, score, bgm_score, status, review, image_url, added_by, director, voice_actors, studio, total_episodes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                        .bind(item.title, score, item.bgm_score, item.status, item.review, item.image_url, user.id, item.director, item.voice_actors, item.studio, item.total_episodes || 0);
                 });
                 await db.batch(stmts);
                 
@@ -170,8 +171,8 @@ if (Astro.request.method === "POST") {
             if (syncList && syncList.length > 0) {
                 const stmts = syncList.map(item => {
                     // 只更新bangumi获取的数据，站长和管理员的个人数据(score, review)及全局status均保持不变
-                    return db.prepare("UPDATE anime SET bgm_score = ?, image_url = ?, director = ?, voice_actors = ?, studio = ?, review = ? WHERE id = ?")
-                        .bind(item.bgm_score, item.image_url, item.director, item.voice_actors, item.studio, item.summary, item.id);
+                    return db.prepare("UPDATE anime SET bgm_score = ?, image_url = ?, director = ?, voice_actors = ?, studio = ?, review = ?, total_episodes = ? WHERE id = ?")
+                        .bind(item.bgm_score, item.image_url, item.director, item.voice_actors, item.studio, item.summary, item.total_episodes || 0, item.id);
                 });
                 await db.batch(stmts);
                 message = `🔄 成功批量更新了 ${syncList.length} 部番剧的 Bangumi 数据！主观信息保持不变。`;
@@ -322,6 +323,7 @@ const animeList = rawAnimeList.map(a => ({
                 <option value="弃番">弃番</option>
             </select>
             <input type="url" name="image_url" id="img" placeholder="图片 URL" />
+            <input type="number" name="total_episodes" id="eps" placeholder="总集数" min="0" style="font-size:12px;" />
             <textarea name="review" id="rv" placeholder="我的独立评价..." rows="4"></textarea>
             
             <button type="submit" class="btn-blue" id="submit-btn" style="margin-top:10px;">发布到网站</button>
@@ -446,7 +448,16 @@ const animeList = rawAnimeList.map(a => ({
         let searchCache = [];
 
         async function fetchBangumiDetail(bgmId) {
-            let dir = '', std = '', vas = '';
+            let dir = '', std = '', vas = '', eps = 0;
+            
+            // 先获取主体信息（含集数）
+            try {
+                const subRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgmId}`);
+                const subData = await subRes.json();
+                if (subData && subData.eps) eps = subData.eps;
+                else if (subData && subData.total_episodes) eps = subData.total_episodes;
+            } catch(e){}
+            
             try {
                 const pRes = await fetch(`https://api.bgm.tv/v0/subjects/${bgmId}/persons`);
                 const persons = await pRes.json();
@@ -471,7 +482,7 @@ const animeList = rawAnimeList.map(a => ({
                 }
             } catch(e){}
             
-            return { dir, std, vas };
+            return { dir, std, vas, eps };
         }
 
         async function fetchBangumiSearch(originalKw) {
@@ -572,6 +583,9 @@ const animeList = rawAnimeList.map(a => ({
                 document.getElementById('bangumi-summary').value = "";
             }
             
+            // 提取总集数
+            document.getElementById('eps').value = item.eps_count || item.eps || item.total_episodes || 0;
+            
             document.getElementById('res').style.display = 'none';
 
             // Placeholder for deep fetching
@@ -583,6 +597,10 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('dir').value = details.dir;
             document.getElementById('std').value = details.std;
             document.getElementById('vas').value = details.vas;
+            // 如果之前没拿到集数，再从详情尝试一次
+            if (!document.getElementById('eps').value || document.getElementById('eps').value === '0') {
+                document.getElementById('eps').value = details.eps || 0;
+            }
         }
 
         function submitBatchDelete() {
@@ -615,6 +633,7 @@ const animeList = rawAnimeList.map(a => ({
             document.getElementById('dir').value = item.director || '';
             document.getElementById('vas').value = item.voice_actors || '';
             document.getElementById('std').value = item.studio || '';
+            document.getElementById('eps').value = item.total_episodes || 0;
             document.getElementById('rv').value = item.review;
             document.getElementById('bangumi-summary').value = item.summary;
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -675,7 +694,8 @@ const animeList = rawAnimeList.map(a => ({
                             status: status,
                             director: details.dir,
                             studio: details.std,
-                            voice_actors: details.vas
+                            voice_actors: details.vas,
+                            total_episodes: details.eps || bgm.eps_count || bgm.eps || 0
                         };
                         batchList.push(item);
                         prog.innerHTML += `<div style="color:#52c41a; margin-bottom:8px;">✅ 抓取成功: <b>${item.title}</b> (Bgm: ${item.bgm_score}) 导演: ${details.dir}</div>`;
@@ -730,7 +750,8 @@ const animeList = rawAnimeList.map(a => ({
                             summary: bgm.summary ? bgm.summary.substring(0, 500) + "..." : "",
                             director: details.dir,
                             studio: details.std,
-                            voice_actors: details.vas
+                            voice_actors: details.vas,
+                            total_episodes: details.eps || bgm.eps_count || bgm.eps || 0
                         });
                         prog.innerHTML += `<div style="color:#52c41a; margin-bottom:8px;">✅ 更新完毕: <b>${item.title}</b> (Bgm: ${(bgm.rating && bgm.rating.score) ? bgm.rating.score : 0})</div>`;
                     } else {

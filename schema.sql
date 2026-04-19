@@ -20,6 +20,8 @@ CREATE TABLE IF NOT EXISTS anime (
   director TEXT,
   voice_actors TEXT,
   studio TEXT,
+  progress INTEGER DEFAULT 0,
+  total_episodes INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now'))
 );
 

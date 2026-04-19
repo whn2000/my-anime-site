@@ -3,9 +3,16 @@ export interface Props {
     anime: any;
     theme: { color: string; bg: string };
     index: number;
+    currentUser?: any;
 }
 
-const { anime, theme, index } = Astro.props;
+const { anime, theme, index, currentUser } = Astro.props;
+const isAdmin = currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin');
+const proxyImg = anime.image_url ? `/api/image?url=${encodeURIComponent(anime.image_url)}` : '';
+const progress = anime.progress || 0;
+const totalEps = anime.total_episodes || 0;
+const showProgress = anime.status === '正在追' && totalEps > 0;
+const progressPct = totalEps > 0 ? Math.round((progress / totalEps) * 100) : 0;
 ---
 <div class="card" style={`animation-delay: ${index * 0.1}s`}>
     <div class="cover-wrapper">
@@ -16,7 +23,7 @@ const { anime, theme, index } = Astro.props;
             {anime.status}
         </span>
         <img
-            src={anime.image_url}
+            src={proxyImg}
             loading="lazy"
             alt={`Cover image for ${anime.title}`}
             class="cover"
@@ -27,7 +34,7 @@ const { anime, theme, index } = Astro.props;
             class="title"
             data-id={anime.id}
             data-title={anime.title}
-            data-img={anime.image_url}
+            data-img={proxyImg}
             data-score={anime.avg_score || "暂无"}
             data-bgm={anime.bgm_score}
             data-dir={anime.director || "未知"}
@@ -53,6 +60,26 @@ const { anime, theme, index } = Astro.props;
                 <span class="meta-tag">🎬 {anime.director}</span>
             )}
         </div>
+
+        {showProgress && (
+            <div class="progress-wrap" data-anime-id={anime.id}>
+                <div class="progress-info">
+                    <span class="progress-label">📺 进度: <b id={`prog-text-${anime.id}`}>{progress}</b> / {totalEps} 集</span>
+                    {isAdmin && (
+                        <button
+                            class="progress-btn"
+                            data-anime-id={anime.id}
+                            title="看完一集，点我 +1"
+                            aria-label="增加一集进度"
+                        >+1</button>
+                    )}
+                </div>
+                <div class="progress-bar-bg">
+                    <div class="progress-bar-fill" id={`prog-bar-${anime.id}`} style={`width: ${progressPct}%`}></div>
+                </div>
+            </div>
+        )}
+
         <p class="review">
             {anime.latest_review || anime.review || "暂无评价..."}
         </p>
