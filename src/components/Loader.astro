@@ -1,0 +1,305 @@
+---
+/**
+ * Loader.astro — 对角线分裂加载动画
+ * 灵感来源: valentincheval.design
+ * 
+ * 结构:
+ *   .loader (全屏固定覆盖层, z-9999)
+ *     ├─ .loader-poly.top   上三角 (clip-path)
+ *     ├─ .loader-poly.bot   下三角 (clip-path)
+ *     ├─ .loader-cross      对角线进度容器 (旋转)
+ *     │   └─ .loader-cross-fill  进度填充
+ *     └─ .loader-content    文字区域
+ *         ├─ .loader-title-wrap  标题 (overflow-hidden clip)
+ *         │   └─ span
+ *         └─ .loader-sub        副标题
+ */
+---
+
+<div class="loader" id="page-loader" aria-hidden="true">
+  <!-- 上半三角形 -->
+  <div class="loader-poly top"></div>
+  <!-- 下半三角形 -->
+  <div class="loader-poly bot"></div>
+
+  <!-- 对角线进度 -->
+  <div class="loader-cross" id="loader-cross">
+    <div class="loader-cross-fill" id="loader-cross-fill"></div>
+  </div>
+
+  <!-- 文字 -->
+  <div class="loader-content">
+    <div class="loader-title-wrap">
+      <span class="loader-title" id="loader-title">我的次元日记 🌸</span>
+    </div>
+    <div class="loader-sub" id="loader-sub">Loading</div>
+  </div>
+</div>
+
+<style is:global>
+  /* ==================== Loader Core ==================== */
+  .loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    pointer-events: all;
+    /* CSS variables driven by JS */
+    --angle: 0rad;
+    --hypot: 100vw;
+    --prog: 0;
+    --offsetX: 0px;
+    --offsetY: 0px;
+    --loader-bg: #0f0f14;
+    --loader-accent: #fb929e;
+    --loader-line: rgba(255,255,255,0.08);
+    --loader-text: #f1f2f6;
+  }
+
+  :root[data-theme="light"] .loader {
+    --loader-bg: #e8e4e0;
+    --loader-accent: #f57cac;
+    --loader-line: rgba(0,0,0,0.06);
+    --loader-text: #2d3436;
+  }
+
+  /* === Polygon halves === */
+  .loader-poly {
+    position: fixed;
+    inset: 0;
+    background: var(--loader-bg);
+    will-change: clip-path, transform;
+    transition: clip-path 1s cubic-bezier(0.76, 0, 0.24, 1),
+                transform 1s cubic-bezier(0.76, 0, 0.24, 1);
+  }
+  .loader-poly.top {
+    /* Top-left triangle: top-left → top-right → bottom-right */
+    clip-path: polygon(
+      calc(0%   - var(--offsetX)) calc(0%   - var(--offsetY)),
+      calc(100% - var(--offsetX)) calc(0%   - var(--offsetY)),
+      calc(100% - var(--offsetX)) calc(100% - var(--offsetY))
+    );
+  }
+  .loader-poly.bot {
+    /* Bottom-right triangle: top-left → bottom-left → bottom-right */
+    clip-path: polygon(
+      calc(0%   + var(--offsetX)) calc(0%   + var(--offsetY)),
+      calc(0%   + var(--offsetX)) calc(100% + var(--offsetY)),
+      calc(100% + var(--offsetX)) calc(100% + var(--offsetY))
+    );
+  }
+
+  /* === Diagonal cross line === */
+  .loader-cross {
+    position: fixed;
+    /* Center of viewport */
+    top: 50%;
+    left: 50%;
+    width: var(--hypot);
+    height: 1px;
+    transform-origin: center center;
+    transform: translate(-50%, -50%) rotate(var(--angle));
+    z-index: 10001;
+    pointer-events: none;
+    background: var(--loader-line);
+    transition: opacity 0.4s ease;
+  }
+  .loader-cross-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: calc(var(--prog) * 100%);
+    background: linear-gradient(90deg, var(--loader-accent), #ff7f9f);
+    border-radius: 0 1px 1px 0;
+    box-shadow: 0 0 12px var(--loader-accent), 0 0 4px var(--loader-accent);
+    transition: width 0.08s linear;
+  }
+
+  /* === Text Content === */
+  .loader-content {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 10002;
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 0.5s ease;
+  }
+  .loader-title-wrap {
+    overflow: hidden;
+    display: inline-block;
+  }
+  .loader-title {
+    display: block;
+    font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif;
+    font-size: clamp(1.6rem, 4vw, 3rem);
+    font-weight: 800;
+    color: var(--loader-text);
+    letter-spacing: -0.5px;
+    transform: translateY(110%);
+    transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .loader-title.visible {
+    transform: translateY(0);
+  }
+  .loader-sub {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--loader-text);
+    opacity: 0;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-top: 16px;
+    transition: opacity 0.6s ease 0.3s;
+  }
+  .loader-sub.visible {
+    opacity: 0.5;
+  }
+
+  /* === Done state: split out === */
+  .loader.on-done .loader-poly.top {
+    clip-path: polygon(
+      calc(0%   - 120%) calc(0%   - 120%),
+      calc(100% - 120%) calc(0%   - 120%),
+      calc(100% - 120%) calc(100% - 120%)
+    );
+  }
+  .loader.on-done .loader-poly.bot {
+    clip-path: polygon(
+      calc(0%   + 120%) calc(0%   + 120%),
+      calc(0%   + 120%) calc(100% + 120%),
+      calc(100% + 120%) calc(100% + 120%)
+    );
+  }
+  .loader.on-done .loader-cross {
+    opacity: 0;
+  }
+  .loader.on-done .loader-content {
+    opacity: 0;
+  }
+
+  /* === Hidden final state === */
+  .loader.hidden {
+    display: none;
+  }
+
+  /* === Main content reveal === */
+  .page-content-reveal {
+    opacity: 0;
+    transform: translateY(30px);
+    transition: opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1),
+                transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .page-content-reveal.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  /* Skip animation for repeat visits */
+  .page-content-reveal.no-anim {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+</style>
+
+<script is:inline>
+(function () {
+  const STORAGE_KEY = 'loader-played';
+  const loader = document.getElementById('page-loader');
+
+  // Lazy getter — content element is rendered AFTER this script in the DOM
+  function getContentEl() {
+    return document.querySelector('.page-content-reveal');
+  }
+
+  // Skip if already played this session
+  if (sessionStorage.getItem(STORAGE_KEY)) {
+    if (loader) loader.classList.add('hidden');
+    // Must wait for DOM since content element comes after this script
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', () => {
+        const el = getContentEl();
+        if (el) el.classList.add('no-anim');
+      });
+    } else {
+      const el = getContentEl();
+      if (el) el.classList.add('no-anim');
+    }
+    return;
+  }
+
+  if (!loader) return;
+
+  // ---- Geometry ----
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const angle = Math.atan2(vh, vw);
+  const hypot = Math.hypot(vw, vh);
+
+  loader.style.setProperty('--angle', `${angle}rad`);
+  loader.style.setProperty('--hypot', `${hypot + 20}px`);
+
+  // ---- Phase 1: Show text (~delay 300ms) ----
+  const titleEl = document.getElementById('loader-title');
+  const subEl = document.getElementById('loader-sub');
+
+  setTimeout(() => {
+    if (titleEl) titleEl.classList.add('visible');
+    if (subEl) subEl.classList.add('visible');
+  }, 300);
+
+  // ---- Phase 2: Progress fill (start at 600ms, run ~2s) ----
+  const PROG_START = 600;
+  const PROG_DURATION = 2000;
+  let startTime = null;
+
+  function animateProgress(ts) {
+    if (!startTime) startTime = ts;
+    const elapsed = ts - startTime;
+    // easeInOutCubic
+    let t = Math.min(elapsed / PROG_DURATION, 1);
+    t = t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2;
+
+    loader.style.setProperty('--prog', t.toString());
+
+    if (elapsed < PROG_DURATION) {
+      requestAnimationFrame(animateProgress);
+    } else {
+      loader.style.setProperty('--prog', '1');
+      triggerSplit();
+    }
+  }
+
+  setTimeout(() => {
+    requestAnimationFrame(animateProgress);
+  }, PROG_START);
+
+  // ---- Phase 3: Split & reveal ----
+  function triggerSplit() {
+    // Hide text first
+    if (titleEl) titleEl.classList.remove('visible');
+    if (subEl) subEl.classList.remove('visible');
+
+    setTimeout(() => {
+      loader.classList.add('on-done');
+
+      // Reveal main content (now the DOM should be ready)
+      setTimeout(() => {
+        const contentEl = getContentEl();
+        if (contentEl) contentEl.classList.add('visible');
+      }, 300);
+
+      // Clean up
+      setTimeout(() => {
+        loader.classList.add('hidden');
+        loader.style.pointerEvents = 'none';
+        sessionStorage.setItem(STORAGE_KEY, '1');
+      }, 1400);
+    }, 400);
+  }
+})();
+</script>

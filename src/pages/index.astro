@@ -396,6 +396,7 @@ const getStatusTheme = (status) => {
     </style>
 
     <body style={`--bgUrl: url('${bgUrl}')`}>
+        <div class="page-content-reveal" id="main-content">
         <div class="bg-overlay"></div>
         <Navbar currentUser={currentUser} />
 
@@ -455,6 +456,7 @@ const getStatusTheme = (status) => {
         </div>
 
         <DetailModal currentUser={currentUser} />
+        </div><!-- /.page-content-reveal -->
 
         <script is:inline>
             // 模糊搜索功能
