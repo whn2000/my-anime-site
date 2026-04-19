@@ -209,39 +209,50 @@ const animeList = rawAnimeList.map(a => ({
     <title>管理后台 - MyAnimeList</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/opencc-js@1.0.5/dist/umd/full.js" defer></script>
+    <script src="/toast.js" is:inline></script>
     <style>
-        :root { --main: #3dbbee; --edit: #f09199; }
-        body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; background: #f4f7f6; padding: 20px; color: #333; }
-        .box { max-width: 600px; margin: 0 auto; background: white; padding: 25px; border-radius: 15px; box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
-        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
-        .user-info { font-size: 14px; color: #666; }
-        .user-badge { display: inline-block; padding: 3px 8px; border-radius: 6px; font-size: 12px; font-weight: bold; background: #eef9ff; color: var(--main); }
-        .nav-links a { color: var(--main); text-decoration: none; font-size: 14px; margin-left: 15px; }
-        .search-area { background: #eef9ff; padding: 15px; border-radius: 10px; margin-bottom: 20px; }
-        .res-box { border: 1px solid #eee; border-radius: 8px; display: none; margin-top: 10px; background: white; max-height: 300px; overflow-y: auto; }
-        .item { display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0; gap: 10px; }
-        .item:hover { background: #f0faff; }
-        input, textarea, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 14px; font-family: inherit; }
-        button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; font-family: inherit; }
-        .btn-blue { background: var(--main); color: white; }
-        .btn-ghost { background: #eee; color: #666; margin-top: 5px; font-size: 12px; }
-        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid #f9f9f9; }
-        .badge { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: #eee; margin-left: 5px; }
+        :root { --main: #fb929e; --edit: #ff7f9f; --glass: rgba(255,255,255,0.8); }
+        body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; background: #fff5f7; padding: 20px; color: #333; }
+        .box { max-width: 600px; margin: 0 auto; background: var(--glass); backdrop-filter: blur(20px); padding: 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(251, 146, 158, 0.1); border: 1px solid rgba(255,255,255,0.5); }
+        .header-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px dashed #fb929e; }
+        .user-info { font-size: 14px; color: #666; font-weight: 600; }
+        .user-badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: bold; background: #ffe4e8; color: var(--main); }
+        .nav-links a { color: var(--main); text-decoration: none; font-size: 14px; margin-left: 15px; font-weight: 600; transition: 0.2s; }
+        .nav-links a:hover { color: var(--edit); }
+        .search-area { background: #fff0f3; padding: 15px; border-radius: 12px; margin-bottom: 20px; border: 1px solid #ffe4e8; }
+        .res-box { border: 1px solid #ffe4e8; border-radius: 12px; display: none; margin-top: 10px; background: white; max-height: 300px; overflow-y: auto; box-shadow: 0 5px 15px rgba(251,146,158,0.1); }
+        .item { display: flex; align-items: center; padding: 10px; cursor: pointer; border-bottom: 1px solid #fff0f3; gap: 10px; transition: 0.2s; }
+        .item:hover { background: #fff0f3; }
+        input, textarea, select { width: 100%; padding: 12px 15px; margin: 8px 0; border: 2px solid #ffe4e8; border-radius: 12px; box-sizing: border-box; font-size: 14px; font-family: inherit; transition: 0.3s; outline: none; background: rgba(255,255,255,0.9); }
+        input:focus, textarea:focus, select:focus { border-color: var(--main); box-shadow: 0 0 0 4px rgba(251,146,158,0.15); }
+        button { width: 100%; padding: 14px; border: none; border-radius: 12px; cursor: pointer; font-weight: 700; transition: all 0.3s; font-family: inherit; }
+        .btn-blue { background: linear-gradient(135deg, var(--main), var(--edit)); color: white; box-shadow: 0 4px 15px rgba(251,146,158,0.3); }
+        .btn-blue:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(251,146,158,0.4); }
+        .btn-ghost { background: #fff0f3; color: var(--main); margin-top: 5px; font-size: 12px; }
+        .list-item { display: flex; justify-content: space-between; align-items: center; padding: 12px; border-bottom: 1px dashed #ffe4e8; border-radius: 10px; transition: 0.2s; }
+        .list-item:hover { background: #fff0f3; transform: translateX(5px); }
+        .badge { font-size: 10px; padding: 3px 8px; border-radius: 6px; background: #ffe4e8; color: var(--main); margin-left: 5px; font-weight: bold; }
+        
+        .dashboard { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; margin-bottom: 25px; }
+        .stat-card { background: linear-gradient(135deg, #fff, #fff0f3); padding: 20px; border-radius: 16px; border: 1px solid #ffe4e8; text-align: center; box-shadow: 0 4px 15px rgba(251,146,158,0.1); }
+        .stat-card .num { font-size: 2rem; font-weight: 800; color: var(--main); margin-bottom: 5px; }
+        .stat-card .lbl { font-size: 0.85rem; color: #666; font-weight: 600; }
 
         #anime-list-wrap { max-height: 500px; overflow-y: auto; padding-right: 5px; transition: max-height 0.3s ease; }
         #anime-list-wrap::-webkit-scrollbar { width: 6px; }
-        #anime-list-wrap::-webkit-scrollbar-thumb { background: #ddd; border-radius: 3px; }
+        #anime-list-wrap::-webkit-scrollbar-thumb { background: var(--main); border-radius: 3px; }
 
         @media (max-width: 600px) {
             body { padding: 10px; }
             .box { padding: 15px; }
+            .dashboard { grid-template-columns: 1fr; }
             .header-bar { flex-direction: column; align-items: flex-start; gap: 15px; }
             .nav-links { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; }
             .nav-links a { margin-left: 0; margin-right: 0; }
             .list-item { flex-direction: column; align-items: flex-start; gap: 12px; }
             .list-item > div:last-child { width: 100%; display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
             .search-area > div, form > div, .box > div { flex-wrap: wrap; }
-            div[style*="display:flex"]:not(.list-item > div):not(.header-bar) { flex-direction: column; align-items: stretch !important; gap: 10px !important; }
+            div[style*="display:flex"]:not(.list-item > div):not(.header-bar):not(.dashboard) { flex-direction: column; align-items: stretch !important; gap: 10px !important; }
             .search-area button { width: 100% !important; margin-top: 5px !important; }
             #batch-delete-form { margin-top: 10px !important; width: 100%; }
             #batch-delete-form button { width: 100% !important; }
@@ -252,18 +263,31 @@ const animeList = rawAnimeList.map(a => ({
     <div class="box">
         <div class="header-bar">
             <div class="user-info">
-                <span>👤 {user.username}</span>
+                <span>🌸 {user.username}</span>
                 <span class="user-badge">{getRoleLabel(user.role)}</span>
             </div>
             <div class="nav-links">
                 <a href="/">返回首页</a>
-                {user.role === 'owner' && <a href="/invite" style="color: #f09199;">🎟️ 邀请码设置</a>}
-                <a href="/logout" style="color: #999;">退出</a>
+                {user.role === 'owner' && <a href="/invite" style="color: var(--edit);">🎟️ 邀请码设置</a>}
+                <a href="/logout" style="color: #ff4757;">退出</a>
             </div>
         </div>
 
-        <h1 id="form-title">添加新番剧</h1>
-        {message && <p style="color: #3dbbee; text-align:center; font-weight:bold; margin-bottom:15px; padding:10px; background:#eef9ff; border-radius:8px;">{message}</p>}
+        {user.role === 'owner' && (
+            <div class="dashboard">
+                <div class="stat-card">
+                    <div class="num">{animeList.length}</div>
+                    <div class="lbl">收录番剧总数</div>
+                </div>
+                <div class="stat-card">
+                    <div class="num">⭐</div>
+                    <div class="lbl">后台管理中心</div>
+                </div>
+            </div>
+        )}
+
+        <h1 id="form-title">添加新番剧 🌸</h1>
+        {message && <p style="color: #fff; text-align:center; font-weight:bold; margin-bottom:15px; padding:12px; background:var(--main); border-radius:12px;">{message}</p>}
 
         <div class="search-area" id="search-section">
             <label style="font-size:12px; color:#666;">第一步：从网络搜索填充 (可选)</label>
@@ -364,13 +388,12 @@ const animeList = rawAnimeList.map(a => ({
     </div>
 
     {user.role === 'owner' && (
-      <div class="box" style="margin-top: 25px; border-left: 4px solid #3dbbee;">
-        <h3 style="margin-top:0;">✨ 批量智能扫雷（自动全盘抓入）</h3>
-        <p style="font-size:12px; color:#666; margin-top:-10px;">如果手动一部部搜太麻烦，请在下方贴入您想补充的番剧名称（每行一个）。系统将全自动连入 Bangumi 查找导演、声优、图片和详情，打包全拿！</p>
+      <div class="box" style="margin-top: 25px; border-left: 5px solid var(--main);">
+        <h3 style="margin-top:0; color:var(--main);">✨ 批量智能扫雷（全自动抓取）</h3>
+        <p style="font-size:12px; color:#666; margin-top:-10px;">输入想补充的番剧名称（每行一个）。系统将全自动连入 Bangumi 查找导演、声优、图片和详情。</p>
         <textarea id="batch-input" rows="5" placeholder="魔法少女小圆
 某科学的超电磁炮
-253
-葬送的芙莉莲" style="width:100%; padding:10px; border:1px solid #ddd; border-radius:8px; resize:vertical; box-sizing:border-box;"></textarea>
+葬送的芙莉莲" style="width:100%; padding:10px; border:1px solid #ffe4e8; border-radius:12px; resize:vertical; box-sizing:border-box;"></textarea>
         
         <div style="display:flex; gap:10px; margin-top:10px; align-items:center;">
             <select id="batch-status" style="padding:10px; border-radius:8px; border:1px solid #ddd; outline:none; cursor:pointer;">
@@ -391,24 +414,24 @@ const animeList = rawAnimeList.map(a => ({
       </div>
     )}
 
-    <div class="box" style="margin-top: 25px; border-left: 4px solid #f09199;">
-        <h3 style="margin-top:0;">🔄 一键更新 Bangumi 数据</h3>
-        <p style="font-size:12px; color:#666; margin-top:-10px;">遍历所有已收录的番剧并同步 Bangumi 最新海报、评分和简介。仅更新全局设定，自动保留您所填写的状态和个人主观评价。</p>
+    <div class="box" style="margin-top: 25px; border-left: 5px solid var(--edit);">
+        <h3 style="margin-top:0; color:var(--edit);">🔄 一键更新 Bangumi 数据</h3>
+        <p style="font-size:12px; color:#666; margin-top:-10px;">遍历所有已收录的番剧并同步 Bangumi 最新海报、评分和简介。</p>
         
         <div id="anime-data" style="display:none;" data-json={JSON.stringify(animeList.map(a => ({id: a.id, title: a.title})))}></div>
-        <button type="button" class="btn-blue" style="background:#f09199;" onclick="startBatchSync()">🔄 一键检测并更新...</button>
+        <button type="button" class="btn-blue" style="background:var(--edit);" onclick="startBatchSync()">🔄 开始检测并同步...</button>
         
-        <div id="sync-progress" style="margin-top:15px; font-size:12px; font-family:monospace; background:#fafafa; padding:10px; border-radius:8px; max-height:200px; overflow-y:auto; border:1px solid #eee; display:none;"></div>
+        <div id="sync-progress" style="margin-top:15px; font-size:12px; font-family:monospace; background:#fff0f3; padding:12px; border-radius:12px; max-height:200px; overflow-y:auto; border:1px solid #ffe4e8; display:none;"></div>
         
         <form method="POST" id="sync-form" style="display:none; margin-top:15px; margin-bottom:0px;">
             <input type="hidden" name="action" value="batch_sync" />
             <input type="hidden" name="sync_data" id="sync-data-input" />
-            <button type="submit" class="btn-blue" style="background:#52c41a; width:100%; font-size:16px;">💾 获取完毕！点击将上方已同步的数据写入数据库</button>
+            <button type="submit" class="btn-blue" style="background:#52c41a; width:100%; font-size:16px;">💾 抓取完毕！将数据写入库中</button>
         </form>
     </div>
 
     {user.role === 'owner' && (
-      <div class="box" style="margin-top: 25px; border: 1px solid #eef9ff;">
+      <div class="box" style="margin-top: 25px; border: 1px dashed var(--main);">
           <h3 style="margin-top:0;">🎨 全站外观设置</h3>
           <form method="POST">
               <input type="hidden" name="action" value="save_settings" />

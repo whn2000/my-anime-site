@@ -87,6 +87,7 @@ if (Astro.request.method === "POST") {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>注册 - MyAnimeList</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="/toast.js" is:inline></script>
     <style>
         /* 复用登录/注册公共样式 */
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -101,13 +102,15 @@ if (Astro.request.method === "POST") {
         .form-group { margin-bottom: 18px; position: relative; }
         .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: #636e72; margin-bottom: 8px; }
         .form-group input { width: 100%; padding: 14px 18px; border: 2px solid #e9ecef; border-radius: 14px; font-size: 0.95rem; font-family: inherit; transition: all 0.3s; background: rgba(255, 255, 255, 0.8); outline: none; }
-        .form-group input:focus { border-color: #f09199; box-shadow: 0 0 0 4px rgba(240, 145, 153, 0.15); }
+        .form-group input:focus { border-color: #fb929e; box-shadow: 0 0 0 4px rgba(251, 146, 158, 0.15); }
         .send-code-btn { position: absolute; right: 5px; top: 31px; padding: 8px 12px; background: #e9ecef; color: #2d3436; border: none; border-radius: 10px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: 0.2s; }
         .send-code-btn:disabled { opacity: 0.6; cursor: not-allowed; }
-        .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #23a6d5, #23d5ab); color: white; border: none; border-radius: 14px; font-size: 1rem; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.3s; margin-top: 5px; }
+        .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #fb929e, #ff7f9f); color: white; border: none; border-radius: 14px; font-size: 1rem; font-weight: 700; font-family: inherit; cursor: pointer; transition: all 0.3s; margin-top: 5px; }
+        .submit-btn:hover { box-shadow: 0 5px 15px rgba(251, 146, 158, 0.4); transform: translateY(-2px); }
         .message { text-align: center; padding: 12px; border-radius: 12px; margin-bottom: 18px; font-size: 0.85rem; font-weight: 500; background: rgba(214, 48, 49, 0.1); color: #d63031; }
         .auth-footer { text-align: center; margin-top: 22px; font-size: 0.85rem; color: #636e72; }
-        .auth-footer a { color: #e73c7e; text-decoration: none; font-weight: 600; }
+        .auth-footer a { color: #fb929e; text-decoration: none; font-weight: 600; transition: 0.2s; }
+        .auth-footer a:hover { color: #ff7f9f; }
         .code-input-wrapper { display: flex; gap: 10px; }
         .code-input-wrapper input { flex: 1; }
         @media (prefers-color-scheme: dark) {

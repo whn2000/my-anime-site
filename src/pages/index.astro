@@ -53,7 +53,8 @@ const getStatusTheme = (status) => {
 <BaseLayout>
     <style slot="body-start" is:global>
         :root {
-            --primary: #ff4757;
+            --primary: #fb929e; /* Sakura Pink */
+            --primary-shadow: rgba(251, 146, 158, 0.4);
             --glass: rgba(15, 15, 20, 0.6);
             --glass-border: rgba(255, 255, 255, 0.15);
             --card-shadow: 0 15px 35px 0 rgba(0, 0, 0, 0.4);
@@ -66,12 +67,13 @@ const getStatusTheme = (status) => {
         }
 
         :root[data-theme="light"] {
-            --primary: #ff4757;
+            --primary: #f57cac; /* Lighter Sakura Pink */
+            --primary-shadow: rgba(245, 124, 172, 0.4);
             --glass: rgba(255, 255, 255, 0.7);
             --glass-border: rgba(255, 255, 255, 0.8);
-            --card-shadow: 0 15px 35px 0 rgba(31, 38, 135, 0.15);
+            --card-shadow: 0 15px 35px 0 rgba(245, 124, 172, 0.15);
             --text-main: #2d3436;
-            --meta-bg: rgba(0, 0, 0, 0.05);
+            --meta-bg: rgba(255, 192, 203, 0.2);
             --review-bg: rgba(255, 255, 255, 0.6);
             --modal-bg: rgba(255, 255, 255, 0.85);
             --input-bg: rgba(255, 255, 255, 0.8);
@@ -120,14 +122,14 @@ const getStatusTheme = (status) => {
         .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 35px; }
 
         .card { background: var(--glass); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border: 1px solid var(--glass-border); border-radius: 24px; overflow: hidden; box-shadow: var(--card-shadow); transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275); display: flex; flex-direction: column; animation: fadeInUp 0.6s ease backwards; }
-        .card:hover { transform: translateY(-12px) scale(1.02); box-shadow: 0 15px 45px rgba(0, 0, 0, 0.6); border: 1px solid rgba(255, 71, 87, 0.4); }
+        .card:hover { transform: translateY(-12px) scale(1.02); box-shadow: 0 15px 45px var(--primary-shadow); border: 1px solid var(--primary); }
         .cover-wrapper { position: relative; height: 360px; overflow: hidden; }
         .cover { width: 100%; height: 100%; object-fit: cover; transition: transform 0.6s ease; }
         .card:hover .cover { transform: scale(1.1); }
-        .status-badge { position: absolute; top: 15px; right: 15px; padding: 6px 16px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; backdrop-filter: blur(5px); z-index: 2; }
+        .status-badge { position: absolute; top: 15px; right: 15px; padding: 6px 16px; border-radius: 100px; font-size: 0.75rem; font-weight: 700; backdrop-filter: blur(8px); z-index: 2; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
         .content { padding: 25px; flex-grow: 1; display: flex; flex-direction: column; }
         .title { font-size: 1.3rem; font-weight: 800; margin: 0 0 12px 0; cursor: pointer; transition: 0.3s; line-height: 1.3; color: var(--text-main); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.3); }
-        .title:hover { color: var(--primary); text-shadow: 0 0 15px var(--primary); }
+        .title:hover { color: var(--primary); text-shadow: 0 0 15px var(--primary-shadow); }
         .scores { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 12px; font-size: 0.8rem; font-weight: 700; }
         .score-pill { padding: 5px 10px; border-radius: 8px; background: var(--meta-bg); border: 1px solid var(--glass-border); color: var(--text-main); }
         .meta-tags { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px; }
@@ -135,12 +137,26 @@ const getStatusTheme = (status) => {
         .review { font-size: 0.9rem; line-height: 1.6; flex-grow: 1; color: var(--text-main); opacity: 0.9; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; background: var(--review-bg); padding: 12px; border-radius: 12px; border-left: 3px solid var(--primary); }
 
         .category-section { margin-bottom: 50px; }
-        .category-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 25px; color: var(--text-main); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 15px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px; user-select: none; transition: color 0.3s; }
+        .category-title { font-size: 1.8rem; font-weight: 800; margin-bottom: 25px; color: var(--text-main); text-shadow: 0 2px 10px rgba(0, 0, 0, 0.2); cursor: pointer; list-style: none; display: flex; align-items: center; gap: 15px; border-bottom: 1px dashed var(--primary); padding-bottom: 15px; user-select: none; transition: color 0.3s; }
         .category-title::-webkit-details-marker { display: none; }
         .category-title:hover { color: var(--primary); }
-        .category-title .count-badge { font-size: 1rem; background: var(--primary); color: white; padding: 4px 12px; border-radius: 100px; font-weight: 700; box-shadow: 0 5px 15px rgba(255, 71, 87, 0.4); }
-        .category-title::before { content: '▶'; font-size: 1.2rem; transition: transform 0.3s; opacity: 0.7; }
+        .category-title .count-badge { font-size: 1rem; background: var(--primary); color: white; padding: 4px 12px; border-radius: 100px; font-weight: 700; box-shadow: 0 5px 15px var(--primary-shadow); }
+        .category-title::before { content: '🌸'; font-size: 1.2rem; transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 0.9; }
         .category-section[open] .category-title::before { transform: rotate(90deg); }
+        
+        .toolbar { display: flex; gap: 20px; margin-bottom: 40px; background: var(--glass); backdrop-filter: blur(25px); border: 1px solid var(--glass-border); padding: 15px 25px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.15); flex-wrap: wrap; }
+        .search-box { flex-grow: 1; display: flex; align-items: center; gap: 10px; background: var(--meta-bg); border-radius: 12px; padding: 10px 15px; border: 1px solid var(--glass-border); transition: 0.3s; }
+        .search-box:focus-within { border-color: var(--primary); box-shadow: 0 0 15px var(--primary-shadow); }
+        .search-box input { background: transparent; border: none; outline: none; color: var(--text-main); font-size: 1rem; width: 100%; font-family: inherit; }
+        .search-box input::placeholder { color: var(--text-main); opacity: 0.5; }
+        .filter-box select { background: var(--meta-bg); border: 1px solid var(--glass-border); color: var(--text-main); padding: 12px 20px; border-radius: 12px; font-size: 0.95rem; outline: none; cursor: pointer; font-family: inherit; }
+        .filter-box select option { background: #2d3436; color: white; }
+        
+        .empty-state { text-align: center; padding: 80px 20px; background: var(--glass); backdrop-filter: blur(20px); border-radius: 30px; border: 1px dashed var(--primary); box-shadow: var(--card-shadow); animation: fadeInUp 0.8s ease; }
+        .empty-icon { font-size: 5rem; margin-bottom: 20px; animation: float 3s ease-in-out infinite; display: inline-block; }
+        @keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-15px); } }
+        .empty-title { font-size: 1.5rem; font-weight: 700; color: var(--primary); margin-bottom: 10px; }
+        .empty-desc { font-size: 1rem; opacity: 0.8; }
 
         dialog { border: none; border-radius: 30px; padding: 0; width: 90%; max-width: 800px; background: var(--modal-bg); backdrop-filter: blur(35px); -webkit-backdrop-filter: blur(35px); border: 1px solid var(--glass-border); box-shadow: 0 25px 60px -12px rgba(0, 0, 0, 0.4); color: var(--text-main); }
         dialog::backdrop { background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); }
@@ -192,11 +208,26 @@ const getStatusTheme = (status) => {
 
         <div class="container">
             <header class="header">
-                <h1>我的追番列表 📺</h1>
-                <p>✨ 记录每一个心动的次元瞬间 ✨</p>
+                <h1>我的次元日记 🌸</h1>
+                <p>✨ 记录每一个心动的追番瞬间 ✨</p>
             </header>
 
-            {
+            {animeList.length > 0 && (
+                <div class="toolbar">
+                    <div class="search-box">
+                        <span style="opacity:0.7">🔍</span>
+                        <input type="text" id="global-search" placeholder="输入番剧名称 / 标签进行检索..." />
+                    </div>
+                </div>
+            )}
+
+            {animeList.length === 0 ? (
+                <div class="empty-state">
+                    <div class="empty-icon">🌸</div>
+                    <div class="empty-title">这里的宇宙空空如也</div>
+                    <div class="empty-desc">当前还没有收录任何番剧，请联系管理员添加或登录后台管理。</div>
+                </div>
+            ) : (
                 [
                     { title: "正在追", icon: "🚀", key: "正在追" },
                     { title: "已完结", icon: "✅", key: "已完结" },
@@ -208,26 +239,62 @@ const getStatusTheme = (status) => {
                     const isOpen = category.key === "正在追" || category.key === "想看";
 
                     return (
-                        <details class="category-section" open={isOpen}>
+                        <details class="category-section anime-section" open={isOpen} data-category={category.key}>
                             <summary class="category-title">
-                                {category.icon} {category.title}{" "}
+                                {category.title}
                                 <span class="count-badge">{list.length}</span>
                             </summary>
                             <div class="grid">
                                 {list.map((anime, index) => (
-                                    <AnimeCard anime={anime} theme={getStatusTheme(anime.status)} index={index} />
+                                    <div class="anime-card-wrap" data-title={anime.title.toLowerCase()} data-status={anime.status}>
+                                        <AnimeCard anime={anime} theme={getStatusTheme(anime.status)} index={index} />
+                                    </div>
                                 ))}
                             </div>
                         </details>
                     );
                 })
-            }
+            )}
 
             <footer class="footer">
-                Powered by <b>Astro</b> & <b>Cloudflare D1</b> | 2026
+                Powered by <b>Astro</b> & <b>Cloudflare D1</b> | <span style="color: var(--primary)">樱花限定版 🌸</span>
             </footer>
         </div>
 
         <DetailModal currentUser={currentUser} />
+
+        <script is:inline>
+            // 模糊搜索功能
+            const searchInput = document.getElementById('global-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    const q = e.target.value.trim().toLowerCase();
+                    const cards = document.querySelectorAll('.anime-card-wrap');
+                    let sectionsVisible = {};
+                    
+                    cards.forEach(card => {
+                        const title = card.getAttribute('data-title');
+                        const status = card.getAttribute('data-status');
+                        if (title.includes(q)) {
+                            card.style.display = 'block';
+                            sectionsVisible[status] = true;
+                        } else {
+                            card.style.display = 'none';
+                        }
+                    });
+
+                    // 隐藏空的分类标题
+                    document.querySelectorAll('.anime-section').forEach(sec => {
+                        const cat = sec.getAttribute('data-category');
+                        if (q === '') {
+                            sec.style.display = 'block';
+                        } else {
+                            sec.style.display = sectionsVisible[cat] ? 'block' : 'none';
+                            if (sectionsVisible[cat]) sec.open = true; // 搜索时自动展开
+                        }
+                    });
+                });
+            }
+        </script>
     </body>
 </BaseLayout>

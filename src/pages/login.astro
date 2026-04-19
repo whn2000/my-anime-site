@@ -1,7 +1,7 @@
 ---
 export const prerender = false;
 import { env } from "cloudflare:workers";
-import { env } from "cloudflare:workers";
+import { getCurrentUser, verifyPassword, generatePbkdf2Hash, createSession, setSessionCookie, checkVerificationCode } from "../lib/auth.js";
 
 const db = env.DB;
 
@@ -67,6 +67,7 @@ const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email)
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>登录 - MyAnimeList</title>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <script src="/toast.js" is:inline></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body { font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: linear-gradient(-45deg, #ee7752, #e73c7e, #23a6d5, #23d5ab); background-size: 400% 400%; animation: gradientBG 15s ease infinite; padding: 20px; }
@@ -78,15 +79,15 @@ const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email)
         .auth-header h1 { font-size: 1.6rem; color: #2d3436; font-weight: 700; margin-bottom: 6px; }
         .tabs { display: flex; margin-bottom: 25px; border-radius: 12px; background: rgba(0,0,0,0.05); padding: 5px; }
         .tab-btn { flex: 1; padding: 10px; text-align: center; cursor: pointer; border-radius: 8px; font-size: 0.9rem; font-weight: 600; color: #636e72; transition: 0.3s; }
-        .tab-btn.active { background: white; color: #f09199; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        .tab-btn.active { background: white; color: #fb929e; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
         .form-group { margin-bottom: 18px; }
         .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: #636e72; margin-bottom: 8px; }
         .form-group input { width: 100%; padding: 14px 18px; border: 2px solid #e9ecef; border-radius: 14px; font-size: 0.95rem; font-family: inherit; transition: all 0.3s; background: rgba(255, 255, 255, 0.8); outline: none; }
-        .form-group input:focus { border-color: #f09199; box-shadow: 0 0 0 4px rgba(240, 145, 153, 0.15); }
+        .form-group input:focus { border-color: #fb929e; box-shadow: 0 0 0 4px rgba(251, 146, 158, 0.15); }
         .code-input-wrapper { display: flex; gap: 10px; }
         .code-input-wrapper input { flex: 1; }
         .send-code-btn { padding: 0 15px; background: #e9ecef; color: #2d3436; border: none; border-radius: 14px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: 0.2s; white-space: nowrap; }
-        .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #f09199, #e73c7e); color: white; border: none; border-radius: 14px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.3s; margin-top: 10px; }
+        .submit-btn { width: 100%; padding: 15px; background: linear-gradient(135deg, #fb929e, #ff7f9f); color: white; border: none; border-radius: 14px; font-size: 1rem; font-weight: 700; cursor: pointer; transition: all 0.3s; margin-top: 10px; }
         .message { text-align: center; padding: 12px; border-radius: 12px; margin-bottom: 18px; font-size: 0.85rem; font-weight: 500; background: rgba(214, 48, 49, 0.1); color: #d63031; }
         .auth-footer { text-align: center; margin-top: 25px; font-size: 0.85rem; color: #636e72; }
         .auth-footer a { color: #e73c7e; text-decoration: none; font-weight: 600; }
