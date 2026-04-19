@@ -35,7 +35,6 @@ const { currentUser } = Astro.props;
             <button
                 id="submit-comment"
                 class="comment-btn"
-                disabled={!currentUser}
             >
                 {currentUser ? "发表评论" : "去登录"}
             </button>
