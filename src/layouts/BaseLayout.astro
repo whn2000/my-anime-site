@@ -26,10 +26,10 @@ const {
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     
-    <!-- Preconnect to Google Fonts to speed up loading -->
+    <!-- Preconnect to Google Fonts and specialized fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=Inter:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet" />
     
     <script is:inline>
         // 早于 body 渲染提取主体，避免闪烁
@@ -41,6 +41,63 @@ const {
     <script src="/toast.js" is:inline></script>
 </head>
 <slot name="body-start" />
+<div id="app-background">
+    <div class="fluid-orb orb-1"></div>
+    <div class="fluid-orb orb-2"></div>
+    <div class="noise-overlay"></div>
+</div>
+<svg style="display: none;">
+    <filter id="noiseFilter">
+        <feTurbulence type="fractalNoise" baseFrequency="0.65" numOctaves="3" stitchTiles="stitch" />
+    </filter>
+</svg>
 <Loader />
 <slot />
+<style is:global>
+    body {
+        font-family: 'Inter', 'Noto Sans SC', sans-serif;
+    }
+    h1, h2, h3, .serif {
+        font-family: 'Noto Serif SC', serif;
+    }
+
+    #app-background {
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        overflow: hidden;
+        pointer-events: none;
+    }
+    .fluid-orb {
+        position: absolute;
+        width: 60vmax;
+        height: 60vmax;
+        border-radius: 50%;
+        filter: blur(100px);
+        opacity: 0.15;
+        animation: float 20s infinite alternate;
+    }
+    .orb-1 {
+        top: -10%;
+        left: -10%;
+        background: radial-gradient(circle, #fb929e, transparent);
+    }
+    .orb-2 {
+        bottom: -10%;
+        right: -10%;
+        background: radial-gradient(circle, #a29bfe, transparent);
+        animation-delay: -10s;
+    }
+    .noise-overlay {
+        position: absolute;
+        inset: 0;
+        opacity: 0.05;
+        filter: url(#noiseFilter);
+        pointer-events: none;
+    }
+    @keyframes float {
+        0% { transform: translate(0, 0) rotate(0deg); }
+        100% { transform: translate(10%, 10%) rotate(10deg); }
+    }
+</style>
 </html>
