@@ -62,30 +62,28 @@
     --loader-text: #2d3436;
   }
 
-  /* === Polygon halves === */
+  /* === Curtain halves === */
   .loader-poly {
     position: fixed;
-    inset: 0;
+    top: 0;
+    bottom: 0;
+    width: 50.5vw;
     background: var(--loader-bg);
-    will-change: clip-path, transform;
-    transition: clip-path 1s cubic-bezier(0.76, 0, 0.24, 1),
-                transform 1s cubic-bezier(0.76, 0, 0.24, 1);
+    will-change: transform;
+    transition: transform 1.2s cubic-bezier(0.76, 0, 0.24, 1);
+    z-index: 10000;
   }
   .loader-poly.top {
-    /* Top-left triangle: top-left → top-right → bottom-right */
-    clip-path: polygon(
-      calc(0%   - var(--offsetX)) calc(0%   - var(--offsetY)),
-      calc(100% - var(--offsetX)) calc(0%   - var(--offsetY)),
-      calc(100% - var(--offsetX)) calc(100% - var(--offsetY))
-    );
+    left: 0;
+    background: linear-gradient(to right, var(--loader-bg) 80%, rgba(255,255,255,0.02), var(--loader-bg));
+    box-shadow: inset -20px 0 40px rgba(0,0,0,0.4);
+    border-right: 1px solid var(--loader-line);
   }
   .loader-poly.bot {
-    /* Bottom-right triangle: top-left → bottom-left → bottom-right */
-    clip-path: polygon(
-      calc(0%   + var(--offsetX)) calc(0%   + var(--offsetY)),
-      calc(0%   + var(--offsetX)) calc(100% + var(--offsetY)),
-      calc(100% + var(--offsetX)) calc(100% + var(--offsetY))
-    );
+    right: 0;
+    background: linear-gradient(to left, var(--loader-bg) 80%, rgba(255,255,255,0.02), var(--loader-bg));
+    box-shadow: inset 20px 0 40px rgba(0,0,0,0.4);
+    border-left: 1px solid var(--loader-line);
   }
 
   /* === Diagonal cross line === */
@@ -158,20 +156,12 @@
     opacity: 0.5;
   }
 
-  /* === Done state: split out === */
+  /* === Done state: curtain pull === */
   .loader.on-done .loader-poly.top {
-    clip-path: polygon(
-      calc(0%   - 120%) calc(0%   - 120%),
-      calc(100% - 120%) calc(0%   - 120%),
-      calc(100% - 120%) calc(100% - 120%)
-    );
+    transform: translateX(-100.5%);
   }
   .loader.on-done .loader-poly.bot {
-    clip-path: polygon(
-      calc(0%   + 120%) calc(0%   + 120%),
-      calc(0%   + 120%) calc(100% + 120%),
-      calc(100% + 120%) calc(100% + 120%)
-    );
+    transform: translateX(100.5%);
   }
   .loader.on-done .loader-cross {
     opacity: 0;
