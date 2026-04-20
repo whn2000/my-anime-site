@@ -62,34 +62,27 @@
     --loader-text: #2d3436;
   }
 
-  /* === Curtain halves === */
+  /* === Triangle halves (Valentin Cheval style) === */
   .loader-poly {
     position: fixed;
-    top: 0;
-    bottom: 0;
-    width: 50.5vw;
+    inset: 0;
     background: var(--loader-bg);
-    will-change: transform;
-    transition: transform 1.2s cubic-bezier(0.76, 0, 0.24, 1);
+    will-change: clip-path, transform;
+    transition: transform 1.3s cubic-bezier(0.8, 0, 0.1, 1);
     z-index: 10000;
   }
   .loader-poly.top {
-    left: 0;
-    background: linear-gradient(to right, var(--loader-bg) 80%, rgba(255,255,255,0.02), var(--loader-bg));
-    box-shadow: inset -20px 0 40px rgba(0,0,0,0.4);
-    border-right: 1px solid var(--loader-line);
+    /* Top-right triangle: top-left → top-right → bottom-right */
+    clip-path: polygon(0 0, 100% 0, 100% 100%);
   }
   .loader-poly.bot {
-    right: 0;
-    background: linear-gradient(to left, var(--loader-bg) 80%, rgba(255,255,255,0.02), var(--loader-bg));
-    box-shadow: inset 20px 0 40px rgba(0,0,0,0.4);
-    border-left: 1px solid var(--loader-line);
+    /* Bottom-left triangle: top-left → bottom-left → bottom-right */
+    clip-path: polygon(0 0, 0 100%, 100% 100%);
   }
 
   /* === Diagonal cross line === */
   .loader-cross {
     position: fixed;
-    /* Center of viewport */
     top: 50%;
     left: 50%;
     width: var(--hypot);
@@ -156,12 +149,12 @@
     opacity: 0.5;
   }
 
-  /* === Done state: curtain pull === */
+  /* === Done state: diagonal split === */
   .loader.on-done .loader-poly.top {
-    transform: translateX(-100.5%);
+    transform: translate(100.5%, -100.5%);
   }
   .loader.on-done .loader-poly.bot {
-    transform: translateX(100.5%);
+    transform: translate(-100.5%, 100.5%);
   }
   .loader.on-done .loader-cross {
     opacity: 0;
@@ -230,6 +223,12 @@
 
   loader.style.setProperty('--angle', `${angle}rad`);
   loader.style.setProperty('--hypot', `${hypot + 20}px`);
+
+  const cross = document.getElementById('loader-cross');
+  if (cross) {
+    cross.style.setProperty('--angle', `${angle}rad`);
+    cross.style.setProperty('--hypot', `${hypot + 20}px`);
+  }
 
   // ---- Phase 1: Show text (~delay 300ms) ----
   const titleEl = document.getElementById('loader-title');
