@@ -234,7 +234,13 @@ const { currentUser } = Astro.props;
 
         fetchComments(currentAnimeId);
         modal.showModal();
+
+        // 初始化富文本编辑器
+        setTimeout(initEditors, 100);
     }
+
+    // 将函数暴露给全局，以备不时之需
+    window.openModal = openModal;
 
     document.querySelectorAll(".title").forEach((btn) => {
         btn.addEventListener("click", () => openModal(btn.dataset));
@@ -369,10 +375,5 @@ const { currentUser } = Astro.props;
         }
     }
 
-    // 在弹窗打开时初始化，避免重复渲染
-    const originalOpenModal = openModal;
-    window.openModal = function(data, forceEdit = false) {
-        originalOpenModal(data, forceEdit);
-        setTimeout(initEditors, 100);
-    };
+    // 在弹窗打开时初始化的逻辑已移至 openModal 内部
 </script>
