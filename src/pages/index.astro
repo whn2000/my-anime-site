@@ -479,7 +479,7 @@ const getStatusTheme = (status) => {
         .comment-text { font-size: 0.95rem; line-height: 1.5; color: var(--text-main); }
         .del-comment-btn { position: absolute; top: 15px; right: 15px; background: none; border: none; color: #ff4757; cursor: pointer; font-size: 0.8rem; }
         .comment-form { margin-top: 20px; }
-        .comment-textarea { width: 100%; border: 1px solid var(--glass-border); border-radius: 12px; padding: 15px; font-family: inherit; resize: vertical; background: var(--input-bg); color: var(--text-main); }
+        .comment-textarea { width: 100%; box-sizing: border-box; max-width: 100%; border: 1px solid var(--glass-border); border-radius: 12px; padding: 15px; font-family: inherit; resize: vertical; background: var(--input-bg); color: var(--text-main); }
         .comment-textarea::placeholder { color: var(--text-main); opacity: 0.6; }
         .comment-btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; }
         .footer { text-align: center; margin-top: 80px; padding: 40px; color: var(--text-main); opacity: 0.7; }
