@@ -4,8 +4,8 @@ export interface Props {
 }
 const { currentUser } = Astro.props;
 ---
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.css" />
-<script src="https://cdn.jsdelivr.net/npm/vditor@3.10.7/dist/index.min.js" is:inline></script>
+<link rel="stylesheet" href="https://unpkg.zhimg.com/vditor@3.10.7/dist/index.css" />
+<script src="https://unpkg.zhimg.com/vditor@3.10.7/dist/index.min.js" is:inline></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" is:inline></script>
 
 <style is:global>
@@ -327,7 +327,7 @@ const { currentUser } = Astro.props;
     let reviewEditor = null;
 
     const commonConfig = {
-        cdn: 'https://cdn.jsdelivr.net/npm/vditor@3.10.7',
+        cdn: 'https://unpkg.zhimg.com/vditor@3.10.7',
         height: 200,
         theme: document.documentElement.getAttribute("data-theme") === 'dark' ? 'dark' : 'ant-design',
         icon: 'ant-design',
