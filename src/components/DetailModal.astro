@@ -166,7 +166,9 @@ const { currentUser } = Astro.props;
             `;
         }).join("");
     }
-
+    
+    // 提交评论
+    document.getElementById("submit-comment").addEventListener("click", async () => {
         if (!currentUser) {
             window.location.href = "/login";
             return;
