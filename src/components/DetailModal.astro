@@ -327,6 +327,7 @@ const { currentUser } = Astro.props;
     let reviewEditor = null;
 
     const commonConfig = {
+        cdn: 'https://cdn.jsdelivr.net/npm/vditor@3.10.7',
         height: 200,
         theme: document.documentElement.getAttribute("data-theme") === 'dark' ? 'dark' : 'ant-design',
         icon: 'ant-design',
