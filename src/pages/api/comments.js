@@ -67,8 +67,8 @@ export async function POST({ request, cookies }) {
     return new Response(JSON.stringify({ error: '评论内容不能为空' }), { status: 400 });
   }
 
-  if (content.trim().length > 500) {
-    return new Response(JSON.stringify({ error: '评论长度不能超过 500 字' }), { status: 400 });
+  if (content.trim().length > 5000) {
+    return new Response(JSON.stringify({ error: '评论长度不能超过 5000 字' }), { status: 400 });
   }
 
   try {
