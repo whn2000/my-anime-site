@@ -18,8 +18,33 @@ const { currentUser } = Astro.props;
 
                 <div class="section-title">✨ 管理员独立评分</div>
                 <div id="m-scores-list"></div>
+                
+                {currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') && (
+                    <button id="m-toggle-edit" class="comment-btn" style="margin-top: 10px; font-size: 0.8rem; padding: 6px 12px; background: var(--meta-bg); border: 1px solid var(--glass-border); color: var(--text-main);">
+                        ✏️ 修改我的评分/评价
+                    </button>
+                )}
             </div>
         </div>
+
+        {currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') && (
+            <div id="m-edit-section" style="display:none; margin-bottom: 30px; background: rgba(251, 146, 158, 0.05); padding: 25px; border-radius: 20px; border: 1px solid var(--primary); position: relative;">
+                <div class="section-title" style="margin-top:0; color: var(--primary); border-color: var(--primary);">✍️ 编辑我的见解</div>
+                <div style="display:flex; gap:15px; align-items:center; margin-bottom:15px;">
+                    <label style="font-size:0.9rem; font-weight:bold;">评分 (0-10):</label>
+                    <input type="number" id="m-edit-score" step="0.1" min="0" max="10" 
+                        style="width:100px; padding:10px; border-radius:10px; border:1px solid var(--glass-border); background:var(--input-bg); color:var(--text-main); font-weight:bold; text-align:center;" />
+                    <span style="font-size:0.8rem; opacity:0.7;">10 分制，可带一位小数</span>
+                </div>
+                <textarea id="m-edit-review" class="comment-textarea" rows="4" 
+                    placeholder="在这里写下您对该作品的深度评价..." 
+                    style="background: var(--input-bg); font-size: 0.95rem;"></textarea>
+                <div style="display:flex; gap:10px; margin-top:15px;">
+                    <button id="m-save-edit" class="comment-btn" style="flex:1;">保存修改</button>
+                    <button id="m-cancel-edit" class="comment-btn" style="background:var(--meta-bg); color:var(--text-main); flex:1;">取消</button>
+                </div>
+            </div>
+        )}
 
         <div class="section-title">💬 讨论区</div>
         <div id="loading-indicator" style="display:none;">加载中...</div>
@@ -58,6 +83,13 @@ const { currentUser } = Astro.props;
             const data = await res.json();
             renderScores(data.scores);
             renderComments(data.comments, data.currentUser);
+            
+            // 如果是管理员，预填编辑表单
+            if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+                const myScore = data.scores.find(s => s.username === currentUser.username);
+                document.getElementById("m-edit-score").value = myScore ? myScore.score : "";
+                document.getElementById("m-edit-review").value = myScore ? (myScore.review || "") : "";
+            }
         } catch (e) {
             console.error("加载失败", e);
         } finally {
@@ -157,25 +189,85 @@ const { currentUser } = Astro.props;
         }
     };
 
+    function openModal(data, forceEdit = false) {
+        currentAnimeId = data.id;
+        document.getElementById("m-img").src = data.img;
+        document.getElementById("m-title").innerText = data.title;
+        document.getElementById("m-info").innerText = `综合平均分: ${data.score} / Bangumi: ${data.bgm}`;
+        document.getElementById("m-meta").innerHTML = `
+            <div style="font-size:0.9rem; margin-bottom:10px; opacity:0.85; border-bottom:1px solid var(--glass-border); padding-bottom:10px;"><i>${data.summary}</i></div>
+            <div><b>🎬 制作：</b> ${data.std}</div>
+            <div><b>🎥 导演：</b> ${data.dir}</div>
+            <div><b>🎙️ 声优：</b> ${data.vas}</div>
+        `;
+        document.getElementById("m-scores-list").innerHTML = "";
+        document.getElementById("m-comments-list").innerHTML = "";
+
+        // 重置编辑状态
+        const editSec = document.getElementById("m-edit-section");
+        if (editSec) editSec.style.display = forceEdit ? "block" : "none";
+
+        fetchComments(currentAnimeId);
+        modal.showModal();
+    }
+
     document.querySelectorAll(".title").forEach((btn) => {
-        btn.addEventListener("click", () => {
-            const d = btn.dataset;
-            currentAnimeId = d.id;
-            document.getElementById("m-img").src = d.img;
-            document.getElementById("m-title").innerText = d.title;
-            document.getElementById("m-info").innerText = `综合平均分: ${d.score} / Bangumi: ${d.bgm}`;
-            document.getElementById("m-meta").innerHTML = `
-                <div style="font-size:0.9rem; margin-bottom:10px; opacity:0.85; border-bottom:1px solid var(--glass-border); padding-bottom:10px;"><i>${d.summary}</i></div>
-                <div><b>🎬 制作：</b> ${d.std}</div>
-                <div><b>🎥 导演：</b> ${d.dir}</div>
-                <div><b>🎙️ 声优：</b> ${d.vas}</div>
-            `;
-            document.getElementById("m-scores-list").innerHTML = "";
-            document.getElementById("m-comments-list").innerHTML = "";
-            fetchComments(currentAnimeId);
-            modal.showModal();
-        });
+        btn.addEventListener("click", () => openModal(btn.dataset));
     });
+
+    // 绑定卡片上的快速编辑按钮
+    document.addEventListener('click', (e) => {
+        const editBtn = e.target.closest('.quick-edit-btn');
+        if (editBtn) {
+            const card = editBtn.closest('.card');
+            const titleEl = card.querySelector('.title');
+            if (titleEl) {
+                openModal(titleEl.dataset, true);
+            }
+        }
+    });
+
+    // 管理员编辑逻辑
+    if (currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin')) {
+        const toggleBtn = document.getElementById("m-toggle-edit");
+        const cancelBtn = document.getElementById("m-cancel-edit");
+        const saveBtn = document.getElementById("m-save-edit");
+        const editSection = document.getElementById("m-edit-section");
+
+        toggleBtn.onclick = () => { editSection.style.display = "block"; editSection.scrollIntoView({ behavior: 'smooth' }); };
+        cancelBtn.onclick = () => { editSection.style.display = "none"; };
+
+        saveBtn.onclick = async () => {
+            const score = document.getElementById("m-edit-score").value;
+            const review = document.getElementById("m-edit-review").value;
+            
+            if (!score) return alert("评分不能为空");
+            
+            saveBtn.disabled = true;
+            saveBtn.innerText = "保存中...";
+            
+            try {
+                const res = await fetch("/api/score", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ anime_id: currentAnimeId, score, review }),
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    window.showToast?.("✨ 评分与评论已保存！");
+                    editSection.style.display = "none";
+                    fetchComments(currentAnimeId);
+                } else {
+                    alert(data.error || "保存失败");
+                }
+            } catch (e) {
+                alert("网络错误");
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.innerText = "保存修改";
+            }
+        };
+    }
 
     closeBtn.onclick = () => {
         modal.close();

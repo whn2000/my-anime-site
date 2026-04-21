@@ -28,7 +28,51 @@ const progressPct = totalEps > 0 ? Math.round((progress / totalEps) * 100) : 0;
             alt={`Cover image for ${anime.title}`}
             class="cover"
         />
+        {isAdmin && (
+            <button 
+                class="quick-edit-btn" 
+                data-id={anime.id}
+                title="快速修改评分/评价"
+            >
+                📝
+            </button>
+        )}
     </div>
+
+    <style>
+        .quick-edit-btn {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--glass);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--glass-border);
+            color: var(--text-main);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            z-index: 5;
+            opacity: 0;
+            transform: scale(0.8) translateY(10px);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            font-size: 1.1rem;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        .card:hover .quick-edit-btn {
+            opacity: 1;
+            transform: scale(1) translateY(0);
+        }
+        .quick-edit-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: scale(1.1);
+        }
+    </style>
     <div class="content">
         <h2
             class="title"
