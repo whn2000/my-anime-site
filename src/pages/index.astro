@@ -85,12 +85,23 @@ const getStatusTheme = (status) => {
             font-family: "Plus Jakarta Sans", "Noto Sans SC", sans-serif;
             margin: 0;
             background-color: var(--modal-bg);
+            min-height: 100vh;
+            color: var(--text-main);
+            overflow-x: hidden;
+        }
+
+        body::before {
+            content: "";
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background-image: var(--bgUrl);
             background-size: cover;
             background-position: center;
-            background-attachment: fixed;
-            min-height: 100vh;
-            color: var(--text-main);
+            z-index: -2;
+            pointer-events: none;
         }
 
         .bg-overlay {
@@ -105,7 +116,7 @@ const getStatusTheme = (status) => {
         .navbar {
             position: fixed; top: 20px; right: 20px; z-index: 100;
             background: var(--glass);
-            backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px);
+            backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
             border: 1px solid var(--glass-border); padding: 10px 20px;
             border-radius: 100px; display: flex; gap: 15px; align-items: center;
             box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
@@ -139,9 +150,9 @@ const getStatusTheme = (status) => {
 
         .card { 
             background: var(--glass); 
-            backdrop-filter: blur(25px); 
-            -webkit-backdrop-filter: blur(25px); 
-            border: 1px solid var(--glass-border); 
+            backdrop-filter: blur(16px); 
+            -webkit-backdrop-filter: blur(16px); 
+            border: 1px solid var(--glass-border);
             border-radius: 16px; 
             overflow: hidden; 
             box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
@@ -408,8 +419,8 @@ const getStatusTheme = (status) => {
             align-items: center; 
             gap: 15px; 
             background: var(--glass); 
-            backdrop-filter: blur(40px);
-            -webkit-backdrop-filter: blur(40px);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
             border-radius: 100px; 
             padding: 12px 25px; 
             border: 1px solid var(--glass-border); 
@@ -698,9 +709,14 @@ const getStatusTheme = (status) => {
                 searchInput.addEventListener('blur', () => {
                     mascot.style.transform = 'scale(1) translateY(0) rotate(0)';
                 });
-                // 监听输入，增加微小晃动
+                // 监听输入，增加微小晃动（节流处理）
+                let mascotTimer = null;
                 searchInput.addEventListener('input', () => {
-                    mascot.style.transform = `scale(1.1) translateY(10px) rotate(${(Math.random() - 0.5) * 4 - 5}deg)`;
+                    if (mascotTimer) return;
+                    mascotTimer = setTimeout(() => {
+                        mascot.style.transform = `scale(1.1) translateY(10px) rotate(${(Math.random() - 0.5) * 4 - 5}deg)`;
+                        mascotTimer = null;
+                    }, 100);
                 });
             }
         </script>

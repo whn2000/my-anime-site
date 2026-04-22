@@ -22,12 +22,16 @@ const progressPct = totalEps > 0 ? Math.round((progress / totalEps) * 100) : 0;
         >
             {anime.status}
         </span>
-        <img
-            src={proxyImg}
-            loading="lazy"
-            alt={`Cover image for ${anime.title}`}
-            class="cover"
-        />
+        {proxyImg ? (
+            <img
+                src={proxyImg}
+                loading="lazy"
+                alt={`Cover image for ${anime.title}`}
+                class="cover"
+            />
+        ) : (
+            <div class="cover" style="background: var(--meta-bg); display: flex; align-items: center; justify-content: center; font-size: 3rem;">🌸</div>
+        )}
         {isAdmin && (
             <button 
                 class="quick-edit-btn" 

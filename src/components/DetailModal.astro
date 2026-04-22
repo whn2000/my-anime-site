@@ -4,8 +4,6 @@ export interface Props {
 }
 const { currentUser } = Astro.props;
 ---
-<link rel="stylesheet" href="https://unpkg.com/vditor@3.10.7/dist/index.css" />
-<script src="https://unpkg.com/vditor@3.10.7/dist/index.min.js" is:inline></script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" is:inline></script>
 
 <style is:global>
@@ -325,6 +323,26 @@ const { currentUser } = Astro.props;
     // 初始化 Vditor
     let commentEditor = null;
     let reviewEditor = null;
+    let vditorAssetsLoaded = false;
+
+    async function loadVditorAssets() {
+        if (vditorAssetsLoaded) return;
+        
+        return new Promise((resolve) => {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = 'https://unpkg.com/vditor@3.10.7/dist/index.css';
+            document.head.appendChild(link);
+
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/vditor@3.10.7/dist/index.min.js';
+            script.onload = () => {
+                vditorAssetsLoaded = true;
+                resolve();
+            };
+            document.head.appendChild(script);
+        });
+    }
 
     const commonConfig = {
         cdn: 'https://unpkg.com/vditor@3.10.7',
@@ -349,8 +367,10 @@ const { currentUser } = Astro.props;
         placeholder: "支持 Markdown 语法与丰富格式 (标题、加粗、颜色等)...",
     };
 
-    function initEditors() {
+    async function initEditors() {
         if (!currentUser) return;
+        
+        await loadVditorAssets();
         
         const theme = document.documentElement.getAttribute("data-theme") === 'dark' ? 'dark' : 'ant-design';
         
