@@ -4,7 +4,7 @@ export interface Props {
 }
 const { currentUser } = Astro.props;
 ---
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" is:inline></script>
+
 
 <style is:global>
     /* Markdown 渲染样式补齐 */
@@ -86,6 +86,58 @@ const { currentUser } = Astro.props;
     const modal = document.getElementById("detail-modal");
     const closeBtn = document.getElementById("close-modal");
     let currentAnimeId = null;
+    let markedLoaded = false;
+
+    // 动态加载 marked 库
+    function loadMarked() {
+        return new Promise((resolve) => {
+            if (typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+                markedLoaded = true;
+                marked.setOptions({ breaks: true, gfm: true });
+                resolve();
+                return;
+            }
+            const script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/marked@15.0.7/marked.min.js';
+            script.onload = () => {
+                markedLoaded = true;
+                if (typeof marked !== 'undefined') {
+                    marked.setOptions({ breaks: true, gfm: true });
+                }
+                resolve();
+            };
+            script.onerror = () => resolve(); // 静默失败
+            document.head.appendChild(script);
+        });
+    }
+
+    // 安全的 markdown 渲染函数
+    function renderMarkdown(text) {
+        if (!text) return '';
+        if (markedLoaded && typeof marked !== 'undefined' && typeof marked.parse === 'function') {
+            try {
+                return marked.parse(text);
+            } catch (e) {
+                console.warn('marked.parse failed:', e);
+            }
+        }
+        // 降级：基本的 markdown 渲染
+        return text
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/^### (.+)$/gm, '<h3>$1</h3>')
+            .replace(/^## (.+)$/gm, '<h2>$1</h2>')
+            .replace(/^# (.+)$/gm, '<h1>$1</h1>')
+            .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+            .replace(/\*(.+?)\*/g, '<em>$1</em>')
+            .replace(/~~(.+?)~~/g, '<del>$1</del>')
+            .replace(/`(.+?)`/g, '<code>$1</code>')
+            .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2">$1</a>')
+            .replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>')
+            .replace(/\n/g, '<br>');
+    }
+
+    // 页面加载时即开始预加载 marked
+    loadMarked();
 
     // 获取评论和评分数据
     async function fetchComments(animeId) {
@@ -93,14 +145,12 @@ const { currentUser } = Astro.props;
         document.getElementById("m-scores-list").innerHTML = "";
         document.getElementById("m-comments-list").innerHTML = "";
 
+        // 确保 marked 已加载
+        await loadMarked();
+
         try {
             const res = await fetch(`/api/comments?anime_id=${animeId}`);
             const data = await res.json();
-            
-            // 配置 marked
-            if (typeof marked !== 'undefined') {
-                marked.setOptions({ breaks: true, gfm: true });
-            }
             
             renderScores(data.scores);
             renderComments(data.comments, data.currentUser);
@@ -138,7 +188,7 @@ const { currentUser } = Astro.props;
                     <div><b>${s.username}</b> ${getRoleTagHTML(s.role)}</div>
                     <div style="color: #fd9644; font-weight:bold;">⭐ ${s.score}</div>
                 </div>
-                ${s.review ? `<div class="md-content" style="font-size:0.9rem; margin-top:5px; color:var(--text-main); opacity:0.9;">${marked.parse(s.review)}</div>` : ""}
+                ${s.review ? `<div class="md-content" style="font-size:0.9rem; margin-top:5px; color:var(--text-main); opacity:0.9;">${renderMarkdown(s.review)}</div>` : ""}
             </div>
         `).join("");
     }
@@ -158,7 +208,7 @@ const { currentUser } = Astro.props;
                         <b>${c.username}</b> ${getRoleTagHTML(c.role)}
                         <span style="margin-left:10px; opacity:0.7;">${new Date(c.created_at + "Z").toLocaleString("zh-CN")}</span>
                     </div>
-                    <div class="comment-text md-content">${marked.parse(c.content)}</div>
+                    <div class="comment-text md-content">${renderMarkdown(c.content)}</div>
                     ${canDelete ? `<button class="del-comment-btn" aria-label="删除评论" onclick="deleteComment(${c.id})">删除</button>` : ""}
                 </div>
             `;

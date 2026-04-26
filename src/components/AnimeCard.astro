@@ -13,6 +13,25 @@ const progress = anime.progress || 0;
 const totalEps = anime.total_episodes || 0;
 const showProgress = anime.status === '正在追' && totalEps > 0;
 const progressPct = totalEps > 0 ? Math.round((progress / totalEps) * 100) : 0;
+
+// Strip markdown syntax for card preview display
+function stripMarkdown(text: string): string {
+    return text
+        .replace(/#{1,6}\s*/g, '')
+        .replace(/\*\*(.+?)\*\*/g, '$1')
+        .replace(/\*(.+?)\*/g, '$1')
+        .replace(/~~(.+?)~~/g, '$1')
+        .replace(/`(.+?)`/g, '$1')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1')
+        .replace(/>\s*/g, '')
+        .replace(/[-*+]\s+/g, '')
+        .replace(/\d+\.\s+/g, '')
+        .replace(/\n{2,}/g, ' ')
+        .replace(/\n/g, ' ')
+        .trim();
+}
+const reviewText = stripMarkdown(anime.latest_review || anime.review || '暂无评价...');
 ---
 <div class="card" style={`animation-delay: ${index * 0.1}s`}>
     <div class="cover-wrapper">
@@ -154,8 +173,6 @@ const progressPct = totalEps > 0 ? Math.round((progress / totalEps) * 100) : 0;
             </div>
         )}
 
-        <p class="review">
-            {anime.latest_review || anime.review || "暂无评价..."}
-        </p>
+        <p class="review">{reviewText}</p>
     </div>
 </div>
