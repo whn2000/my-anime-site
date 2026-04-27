@@ -16,6 +16,8 @@
         toast.style.fontWeight = '600';
         toast.style.fontSize = '14px';
         toast.style.backdropFilter = 'blur(10px)';
+        toast.style.maxWidth = '90vw';
+        toast.style.textAlign = 'center';
         toast.innerHTML = (type === 'error' ? '❌ ' : '🌸 ') + msg;
         
         document.body.appendChild(toast);
@@ -33,8 +35,7 @@
         }, 3500);
     };
 
-    // Override native alert globally
-    window.alert = function(msg) {
-        window.showToast(msg);
-    };
+    // 不再覆盖原生 alert，改为独立函数
+    // 之前的 alert 覆盖会导致某些依赖 alert 返回值的库异常
+    // 如需使用弹窗提示，请直接调用 showToast()
 })();

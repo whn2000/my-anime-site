@@ -31,8 +31,6 @@ const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email)
         }
         const token = await createSession(db, user.id);
         setSessionCookie(Astro.cookies, token);
-        return Astro.redirect('/');
-        setSessionCookie(Astro.cookies, token);
         return Astro.redirect("/");
       } else {
         message = "邮箱或密码错误，或者您未设置密码（请尝试验证码登录）";
@@ -169,7 +167,7 @@ const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email)
 
         document.getElementById('send-login-code').addEventListener('click', async function() {
             const email = document.getElementById('code-email').value.trim();
-            if (!email) return alert('请先填写邮箱地址');
+            if (!email) return window.showToast?.('请先填写邮箱地址');
 
             const btn = this;
             btn.disabled = true;
@@ -185,7 +183,7 @@ const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email)
                 const data = await res.json();
                 
                 if (res.ok) {
-                    alert('验证码发送成功');
+                    window.showToast?.('验证码发送成功');
                     let countdown = 60;
                     const timer = setInterval(() => {
                         btn.innerText = `${countdown}s`;
@@ -197,12 +195,12 @@ const user = await db.prepare('SELECT * FROM users WHERE email = ?').bind(email)
                         }
                     }, 1000);
                 } else {
-                    alert(data.error || '发送失败');
+                    window.showToast?.(data.error || '发送失败', 'error');
                     btn.disabled = false;
                     btn.innerText = '获取验证码';
                 }
             } catch (err) {
-                alert('网络错误');
+                window.showToast?.('网络错误', 'error');
                 btn.disabled = false;
                 btn.innerText = '获取验证码';
             }

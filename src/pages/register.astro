@@ -171,7 +171,7 @@ if (Astro.request.method === "POST") {
     <script is:inline>
         document.getElementById('send-code-btn').addEventListener('click', async function() {
             const email = document.getElementById('email').value.trim();
-            if (!email) return alert('请先填写邮箱地址');
+            if (!email) return window.showToast?.('请先填写邮箱地址');
 
             const btn = this;
             btn.disabled = true;
@@ -187,7 +187,7 @@ if (Astro.request.method === "POST") {
                 const data = await res.json();
                 
                 if (res.ok) {
-                    alert('验证码发送成功，请前往邮箱查收');
+                    window.showToast?.('验证码发送成功，请前往邮箱查收');
                     let countdown = 60;
                     const timer = setInterval(() => {
                         btn.innerText = `${countdown}s 后重发`;
@@ -199,12 +199,12 @@ if (Astro.request.method === "POST") {
                         }
                     }, 1000);
                 } else {
-                    alert(data.error || '验证码发送失败');
+                    window.showToast?.(data.error || '验证码发送失败', 'error');
                     btn.disabled = false;
                     btn.innerText = '获取验证码';
                 }
             } catch (err) {
-                alert('网络错误，请稍后刷新重试');
+                window.showToast?.('网络错误，请稍后刷新重试', 'error');
                 btn.disabled = false;
                 btn.innerText = '获取验证码';
             }

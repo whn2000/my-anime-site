@@ -1,36 +1,41 @@
 // src/pages/api/progress.js
-// 追番进度 API - 支持 +1 / -1 / 设置精确值
-export const prerender = false;
-
-import { env } from "cloudflare:workers";
-import { getCurrentUser, hasRole } from "../../lib/auth.js";
-
 /**
+ * 追番进度 API - 支持 +1 / -1 / 设置精确值
+ *
  * POST /api/progress
  * Body: { anime_id, action: "increment" | "decrement" | "set", value?: number }
- * 仅站长和管理员可操作
+ * 仅站长/管理员可操作
+ *
+ * 依赖模块：
+ * - db.js: 数据库查询封装
+ * - response.js: 统一响应格式
+ */
+export const prerender = false;
+
+import { getAnimeById, updateAnime } from '../../lib/db.js';
+import { getCurrentUser, hasRole } from '../../lib/auth.js';
+import { success, error, forbidden, notFound, serverError } from '../../lib/response.js';
+
+/**
+ * POST - 更新追番进度
  */
 export async function POST({ request, cookies }) {
+  try {
+    const { env } = await import('cloudflare:workers');
   const db = env.DB;
   const user = await getCurrentUser(db, cookies);
 
   if (!user || !hasRole(user, ['owner', 'admin'])) {
-    return new Response(JSON.stringify({ error: '权限不足' }), { status: 403 });
+      return forbidden('权限不足');
   }
 
   const body = await request.json();
   const { anime_id, action } = body;
 
-  if (!anime_id) {
-    return new Response(JSON.stringify({ error: 'anime_id is required' }), { status: 400 });
-  }
+    if (!anime_id) return error('anime_id is required');
 
-  // 获取当前番剧数据
-  const anime = await db.prepare("SELECT progress, total_episodes FROM anime WHERE id = ?").bind(anime_id).first();
-  if (!anime) {
-    return new Response(JSON.stringify({ error: '番剧不存在' }), { status: 404 });
-  }
-
+    const anime = await getAnimeById(anime_id);
+    if (!anime) return notFound('番剧不存在');
   let newProgress = anime.progress || 0;
   const totalEps = anime.total_episodes || 0;
 
@@ -41,16 +46,18 @@ export async function POST({ request, cookies }) {
   } else if (action === 'set') {
     newProgress = Math.max(0, Math.min(body.value || 0, totalEps > 0 ? totalEps : body.value || 0));
   } else {
-    return new Response(JSON.stringify({ error: 'Invalid action' }), { status: 400 });
+      return error('Invalid action');
   }
 
-  await db.prepare("UPDATE anime SET progress = ? WHERE id = ?").bind(newProgress, anime_id).run();
+    await updateAnime(anime_id, { progress: newProgress });
 
-  return new Response(JSON.stringify({
-    success: true,
+    return success({
+      message: `🎬 进度已更新：${newProgress} / ${totalEps} 集`,
     progress: newProgress,
     total_episodes: totalEps,
-  }), {
-    headers: { 'Content-Type': 'application/json' },
   });
+  } catch (e) {
+    return serverError('更新进度失败：' + e.message);
 }
+}
+

@@ -606,7 +606,7 @@ const animeList = rawAnimeList.map(a => ({
         function submitBatchDelete() {
             const checkboxes = document.querySelectorAll('.anime-checkbox:checked');
             if (checkboxes.length === 0) {
-                alert("请至少选择一个要删除的番剧！");
+                window.showToast?.("请至少选择一个要删除的番剧！", 'error');
                 return false;
             }
             if (!confirm(`确定要永久删除这 ${checkboxes.length} 部番剧及其所有评分和评论吗？`)) {
@@ -664,7 +664,7 @@ const animeList = rawAnimeList.map(a => ({
 
         async function startBatch() {
             const lines = document.getElementById('batch-input').value.split('\n').map(l => l.trim()).filter(l => l);
-            if (lines.length === 0) return alert("请先输入需要查询的动漫名单");
+            if (lines.length === 0) return window.showToast?.("请先输入需要查询的动漫名单", 'error');
             
             const status = document.getElementById('batch-status').value;
             const prog = document.getElementById('batch-progress');
@@ -724,7 +724,7 @@ const animeList = rawAnimeList.map(a => ({
             const animeDataNode = document.getElementById('anime-data');
             if (!animeDataNode) return;
             const currentAnimes = JSON.parse(animeDataNode.getAttribute('data-json') || '[]');
-            if (currentAnimes.length === 0) return alert("当前没有任何番剧可更新");
+            if (currentAnimes.length === 0) return window.showToast?.("当前没有任何番剧可更新", 'error');
             
             const prog = document.getElementById('sync-progress');
             prog.style.display = 'block';
@@ -924,7 +924,7 @@ const animeList = rawAnimeList.map(a => ({
         function submitBatchDelete() {
             const checkboxes = document.querySelectorAll('.anime-checkbox:checked');
             if (checkboxes.length === 0) {
-                alert("请至少选择一个要删除的番剧！");
+                window.showToast?.("请至少选择一个要删除的番剧！", 'error');
                 return false;
             }
             if (!confirm(`确定要永久删除这 ${checkboxes.length} 部番剧及其所有评分和评论吗？`)) {
@@ -981,7 +981,7 @@ const animeList = rawAnimeList.map(a => ({
 
         async function startBatch() {
             const lines = document.getElementById('batch-input').value.split('\n').map(l => l.trim()).filter(l => l);
-            if (lines.length === 0) return alert("请先输入需要查询的动漫名单");
+            if (lines.length === 0) return window.showToast?.("请先输入需要查询的动漫名单", 'error');
             
             const status = document.getElementById('batch-status').value;
             const prog = document.getElementById('batch-progress');
@@ -1064,7 +1064,7 @@ const animeList = rawAnimeList.map(a => ({
             const animeDataNode = document.getElementById('anime-data');
             if (!animeDataNode) return;
             const currentAnimes = JSON.parse(animeDataNode.getAttribute('data-json') || '[]');
-            if (currentAnimes.length === 0) return alert("当前没有任何番剧可更新");
+            if (currentAnimes.length === 0) return window.showToast?.("当前没有任何番剧可更新", 'error');
             
             const prog = document.getElementById('sync-progress');
             prog.style.display = 'block';

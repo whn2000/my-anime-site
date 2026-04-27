@@ -223,7 +223,7 @@ const { currentUser } = Astro.props;
         }
 
         const content = commentEditor ? commentEditor.getValue().trim() : "";
-        if (!content) return alert("评论内容不能为空");
+        if (!content) return window.showToast?.("评论内容不能为空");
 
         try {
             const res = await fetch("/api/comments", {
@@ -236,10 +236,10 @@ const { currentUser } = Astro.props;
                 if (commentEditor) commentEditor.setValue("");
                 fetchComments(currentAnimeId);
             } else {
-                alert(data.error || "评论失败");
+                window.showToast?.(data.error || "评论失败", 'error');
             }
         } catch (e) {
-            alert("网络错误");
+            window.showToast?.("网络错误", 'error');
         }
     });
 
@@ -255,10 +255,10 @@ const { currentUser } = Astro.props;
                 fetchComments(currentAnimeId);
             } else {
                 const data = await res.json();
-                alert(data.error || "删除失败");
+                window.showToast?.(data.error || "删除失败", 'error');
             }
         } catch (e) {
-            alert("网络错误");
+            window.showToast?.("网络错误", 'error');
         }
     };
 
@@ -320,7 +320,7 @@ const { currentUser } = Astro.props;
             const score = document.getElementById("m-edit-score").value;
             const review = reviewEditor ? reviewEditor.getValue().trim() : "";
             
-            if (!score) return alert("评分不能为空");
+            if (!score) return window.showToast?.("评分不能为空");
             
             saveBtn.disabled = true;
             saveBtn.innerText = "保存中...";
@@ -337,10 +337,10 @@ const { currentUser } = Astro.props;
                     editSection.style.display = "none";
                     fetchComments(currentAnimeId);
                 } else {
-                    alert(data.error || "保存失败");
+                    window.showToast?.(data.error || "保存失败", 'error');
                 }
             } catch (e) {
-                alert("网络错误");
+                window.showToast?.("网络错误", 'error');
             } finally {
                 saveBtn.disabled = false;
                 saveBtn.innerText = "保存修改";

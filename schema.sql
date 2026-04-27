@@ -90,3 +90,33 @@ CREATE TABLE IF NOT EXISTS site_settings (
   key TEXT PRIMARY KEY,
   value TEXT
 );
+
+-- =============== 性能优化索引 ===============
+-- 会话表：按 token 和过期时间快速查询（用于每次请求的登录验证）
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON sessions(token);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+-- 评分表：按番剧 ID 快速查询评分（首页聚合 + 详情页）
+CREATE INDEX IF NOT EXISTS idx_anime_scores_anime ON anime_scores(anime_id);
+CREATE INDEX IF NOT EXISTS idx_anime_scores_user ON anime_scores(user_id);
+
+-- 评论表：按番剧 ID 快速查询评论（详情页）
+CREATE INDEX IF NOT EXISTS idx_comments_anime ON comments(anime_id);
+CREATE INDEX IF NOT EXISTS idx_comments_user ON comments(user_id);
+
+-- 验证码表：按邮箱快速查询（防刷检查）
+CREATE INDEX IF NOT EXISTS idx_verification_codes_email ON verification_codes(email);
+CREATE INDEX IF NOT EXISTS idx_verification_codes_email_purpose ON verification_codes(email, purpose);
+-- 过期清理用索引
+CREATE INDEX IF NOT EXISTS idx_verification_codes_expires ON verification_codes(expires_at);
+
+-- 邀请码表：按 code 快速查询（注册验证）
+CREATE INDEX IF NOT EXISTS idx_invitations_code ON invitations(code);
+
+-- 番剧表：按状态和标题排序（首页分类展示 + 搜索）
+CREATE INDEX IF NOT EXISTS idx_anime_status ON anime(status);
+CREATE INDEX IF NOT EXISTS idx_anime_title ON anime(title);
+
+-- 用户表：按邮箱快速查询（登录验证）
+CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);

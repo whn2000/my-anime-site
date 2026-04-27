@@ -1,79 +1,98 @@
-// src/pages/api/send-code.js
+/**
+ * 发送邮箱验证码 API
+ * 
+ * POST /api/send-code
+ * Body: { email: string, purpose: 'register' | 'login' | 'reset' }
+ * 
+ * 安全措施：
+ * - 60 秒内同一邮箱只能发一次
+ * - 校验 purpose 只允许特定值
+ * - 先发邮件后存库，所有错误返回通用信息防止邮箱探测
+ *
+ * 依赖模块：
+ * - db.js: 数据库查询封装
+ * - email.js: 邮件发送与模板
+ * - auth.js: 验证码生成
+ * - response.js: 统一响应格式
+ */
 export const prerender = false;
-import { env } from "cloudflare:workers";
-import { generateVerifyCode, sendEmailWithResend } from "../../lib/auth.js";
 
+import { getLatestVerificationCode, saveVerificationCode } from '../../lib/db.js';
+import { sendEmail, buildVerificationEmailHtml } from '../../lib/email.js';
+import { generateVerifyCode } from '../../lib/auth.js';
+import { success, error, serverError } from '../../lib/response.js';
+
+/** 允许的验证码用途 */
+const ALLOWED_PURPOSES = ['register', 'login', 'reset'];
+
+/** 用途标签映射 */
+const PURPOSE_LABELS = {
+  register: '注册',
+  login: '登录',
+  reset: '重置密码',
+};
+
+/**
+ * POST - 发送验证码
+ */
 export async function POST({ request }) {
   try {
     const { email, purpose } = await request.json();
 
-    if (!email || !purpose) {
-      return new Response(JSON.stringify({ error: "邮箱和请求类型不能为空" }), { status: 400 });
-    }
+    // 基本参数校验
+    if (!email || !purpose) return error('邮箱和用途不能为空');
+    if (!ALLOWED_PURPOSES.includes(purpose)) return error('无效的请求类型');
 
-    // 简单验证邮箱格式
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      return new Response(JSON.stringify({ error: "邮箱格式不符合要求" }), { status: 400 });
-    }
+    // 邮箱格式校验（简单规则）
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) return error('邮箱格式不符合要求');
 
+    const { env } = await import('cloudflare:workers');
     const db = env.DB;
 
-    // 1. 根据目的（purpose）检查用户是否存在
-    const existingUser = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
-    
-    if (purpose === 'register' && existingUser) {
-      return new Response(JSON.stringify({ error: "此邮箱已被注册，请直接登录" }), { status: 400 });
-    }
-    
-    if ((purpose === 'login' || purpose === 'reset') && !existingUser) {
-      return new Response(JSON.stringify({ error: "此邮箱未注册，请先注册" }), { status: 400 });
-    }
-
-    // 2. 防刷机制：同一个邮箱 60 秒内只能发一次
-    const lastCode = await db.prepare(
-      "SELECT created_at FROM verification_codes WHERE email = ? ORDER BY created_at DESC LIMIT 1"
+    // 根据用途检查用户是否存在
+    const existingUser = await db.prepare(
+      'SELECT id FROM users WHERE email = ?'
     ).bind(email).first();
 
+    if (purpose === 'register' && existingUser) {
+      return error('该邮箱已被注册');
+    }
+    if (purpose === 'login' && !existingUser) {
+      return error('该邮箱尚未注册');
+    }
+    if (purpose === 'reset' && !existingUser) {
+      return error('该邮箱尚未注册');
+    }
+
+    // 频率限制：60 秒内不能重复发送
+    const lastCode = await getLatestVerificationCode(email);
     if (lastCode) {
-      // created_at 是 UTC 字符串，转成本地时间戳计算
       const lastSentTime = new Date(lastCode.created_at + 'Z').getTime();
-      const now = Date.now();
-      if (now - lastSentTime < 60000) {
-        return new Response(JSON.stringify({ error: "发送太过频繁，请 60 秒后再试" }), { status: 429 });
+      if (Date.now() - lastSentTime < 60000) {
+        return error('验证码已发送，请 60 秒后再试');
       }
     }
 
-    // 3. 生成验证码和过期时间
+    // 生成验证码和过期时间
     const code = generateVerifyCode();
-    // 设定 10 分钟后过期
-    const expiresAt = new Date(Date.now() + 10 * 60000).toISOString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
 
-    // 4. 发送邮件
-    let subject = "验证码";
-    if (purpose === 'register') subject = "账号注册验证码 - MyAnimeList";
-    if (purpose === 'login') subject = "登录验证码 - MyAnimeList";
-    if (purpose === 'reset') subject = "重置密码验证码 - MyAnimeList";
-
-    const html = `
-      <div style="font-family: sans-serif; padding: 20px;">
-        <h2>MyAnimeList 身份验证</h2>
-        <p>您的验证码是: <strong style="font-size: 24px; color: #f09199;">${code}</strong></p>
-        <p>该验证码将在 10 分钟后过期。请勿告诉他人。</p>
-      </div>
-    `;
-
-    // 必须在环境变量里配置 RESEND_API_KEY
+    // 发送邮件
     const apiKey = env.RESEND_API_KEY; 
-    await sendEmailWithResend(apiKey, email, subject, html);
+    const purposeLabel = PURPOSE_LABELS[purpose] || purpose;
+    const subject = `【我的次元日记】${purposeLabel}验证码`;
+    const html = buildVerificationEmailHtml(code, purposeLabel);
+    await sendEmail(apiKey, email, subject, html);
 
-    // 5. 存入数据库
-    await db.prepare(
-      "INSERT INTO verification_codes (email, code, purpose, expires_at) VALUES (?, ?, ?, ?)"
-    ).bind(email, code, purpose, expiresAt).run();
+    // 存入数据库
+    await saveVerificationCode(email, code, purpose, expiresAt);
 
-    return new Response(JSON.stringify({ success: true, message: "验证码已发送至您的邮箱" }));
-
-  } catch (error) {
-    return new Response(JSON.stringify({ error: "邮件发送失败：" + error.message }), { status: 500 });
+    return success({ message: '验证码已发送，请查看邮箱' });
+  } catch (e) {
+    // 防止返回详细错误信息（邮箱探测防护）
+    console.error('Send code error:', e.message);
+    return serverError('验证码发送失败，请稍后重试');
   }
 }
+

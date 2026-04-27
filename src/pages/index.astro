@@ -2,6 +2,8 @@
 export const prerender = false;
 import { env } from "cloudflare:workers";
 import { getCurrentUser } from "../lib/auth.js";
+import { getAllAnime, getSiteSetting } from "../lib/db.js";
+import { ANIME_STATUSES, getStatusTheme, DEFAULT_BACKGROUND } from "../lib/constants.js";
 import BaseLayout from "../layouts/BaseLayout.astro";
 import Navbar from "../components/Navbar.astro";
 import AnimeCard from "../components/AnimeCard.astro";
@@ -12,42 +14,11 @@ const db = env.DB;
 // 获取当前登录用户
 const currentUser = await getCurrentUser(db, Astro.cookies);
 
-// 提取全局背景设置
-let bgUrl =
-    "https://images.unsplash.com/photo-1578632767115-351597cf2477?auto=format&fit=crop&q=80";
-try {
-    const bgSetting = await db
-        .prepare("SELECT value FROM site_settings WHERE key = 'background_url'")
-        .first();
-    if (bgSetting && bgSetting.value) bgUrl = bgSetting.value;
-} catch (e) {}
+// 获取全局背景设置
+const bgUrl = (await getSiteSetting('background_url')) || DEFAULT_BACKGROUND;
 
-// 获取番剧列表，优化 N+1 查询，使用 LEFT JOIN 聚合
-const { results: animeList } = await db
-    .prepare(
-        `
-  SELECT 
-    a.*, 
-    ROUND(AVG(s.score), 1) as avg_score,
-    COUNT(s.id) as score_count,
-    (SELECT review FROM anime_scores WHERE anime_id = a.id AND review IS NOT NULL AND review != '' ORDER BY created_at DESC LIMIT 1) as latest_review
-  FROM anime a
-  LEFT JOIN anime_scores s ON a.id = s.anime_id
-  GROUP BY a.id
-  ORDER BY a.id DESC
-`
-    )
-    .all();
-
-const getStatusTheme = (status) => {
-    const map = {
-        已完结: { color: "#00b894", bg: "rgba(0, 184, 148, 0.15)" },
-        正在追: { color: "#0984e3", bg: "rgba(9, 132, 227, 0.15)" },
-        想看: { color: "#fdcb6e", bg: "rgba(253, 203, 110, 0.15)" },
-        弃番: { color: "#d63031", bg: "rgba(214, 48, 49, 0.15)" },
-    };
-    return map[status] || { color: "#636e72", bg: "rgba(99, 110, 114, 0.15)" };
-};
+// 获取番剧列表（含聚合评分）
+const animeList = await getAllAnime();
 ---
 
 <BaseLayout>
@@ -493,6 +464,86 @@ const getStatusTheme = (status) => {
         .comment-textarea { width: 100%; box-sizing: border-box; max-width: 100%; border: 1px solid var(--glass-border); border-radius: 12px; padding: 15px; font-family: inherit; resize: vertical; background: var(--input-bg); color: var(--text-main); }
         .comment-textarea::placeholder { color: var(--text-main); opacity: 0.6; }
         .comment-btn { background: var(--primary); color: white; border: none; padding: 10px 20px; border-radius: 8px; cursor: pointer; font-weight: 600; margin-top: 10px; }
+        
+        /* 添加番剧浮动按钮 */
+        .floating-add-btn {
+            position: fixed;
+            bottom: 30px;
+            left: 30px;
+            z-index: 50;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary), #ff7f9f);
+            color: white;
+            border: none;
+            font-size: 1.8rem;
+            cursor: pointer;
+            box-shadow: 0 8px 25px var(--primary-shadow);
+            transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .floating-add-btn:hover {
+            transform: scale(1.1) rotate(90deg);
+            box-shadow: 0 12px 35px var(--primary-shadow);
+        }
+        .floating-add-btn:active {
+            transform: scale(0.95);
+        }
+
+        /* 添加番剧表单 */
+        .add-form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 18px;
+        }
+        .add-form-grid .form-group { margin-bottom: 0; }
+        .add-form-grid .full-width { grid-column: 1 / -1; }
+        .add-form-grid label { display: block; font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; opacity: 0.8; }
+        .add-form-grid input,
+        .add-form-grid select,
+        .add-form-grid textarea {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 2px solid var(--glass-border);
+            background: var(--input-bg);
+            color: var(--text-main);
+            font-size: 0.9rem;
+            font-family: inherit;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+        .add-form-grid input:focus,
+        .add-form-grid select:focus,
+        .add-form-grid textarea:focus {
+            border-color: var(--primary);
+            outline: none;
+        }
+        .add-form-grid select option { background: #2d3436; color: white; }
+
+        /* AniList 搜索结果 */
+        .anilist-result-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 15px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .anilist-result-item:hover {
+            background: var(--primary);
+            color: white;
+        }
+        .anilist-result-item:last-child { border-bottom: none; }
+
+        @media (max-width: 600px) {
+            .add-form-grid { grid-template-columns: 1fr; }
+            .floating-add-btn { bottom: 80px; left: 15px; width: 50px; height: 50px; font-size: 1.4rem; }
+        }
         .footer { text-align: center; margin-top: 80px; padding: 40px; color: var(--text-main); opacity: 0.7; }
         @keyframes fadeInUp { from { opacity: 0; transform: translateY(30px); } to { opacity: 1; transform: translateY(0); } }
         #loading-indicator { text-align: center; color: #aaa; padding: 20px; }
@@ -546,12 +597,7 @@ const getStatusTheme = (status) => {
                     <div class="empty-desc">当前还没有收录任何番剧，请联系管理员添加或登录后台管理。</div>
                 </div>
             ) : (
-                [
-                    { title: "正在追", icon: "🚀", key: "正在追" },
-                    { title: "已完结", icon: "✅", key: "已完结" },
-                    { title: "想看", icon: "✨", key: "想看" },
-                    { title: "弃番", icon: "🗑️", key: "弃番" }
-                ].map((category) => {
+                ANIME_STATUSES.map((category) => {
                     const list = animeList.filter((a) => a.status === category.key);
                     if (list.length === 0) return null;
                     const isOpen = category.key === "正在追" || category.key === "想看";
@@ -559,7 +605,7 @@ const getStatusTheme = (status) => {
                     return (
                         <details class="category-section anime-section" open={isOpen} data-category={category.key}>
                             <summary class="category-title serif">
-                                {category.title}
+                                {category.label}
                                 <span class="count-badge">{list.length}</span>
                             </summary>
                             <div class="grid">
@@ -580,6 +626,74 @@ const getStatusTheme = (status) => {
         </div>
 
         <DetailModal currentUser={currentUser} />
+
+        <!-- 管理员添加番剧浮动按钮 -->
+        {currentUser && (currentUser.role === 'owner' || currentUser.role === 'admin') && (
+            <button id="add-anime-btn" class="floating-add-btn" title="添加新番剧">
+                ➕
+            </button>
+        )}
+
+        <!-- 添加番剧模态框 -->
+        <dialog id="add-anime-modal">
+            <div class="modal-body">
+                <button class="close-btn" id="close-add-modal" aria-label="关闭">✕</button>
+                <h2 style="font-size:1.8rem; margin-bottom:25px; color:var(--primary);">✨ 添加新番剧</h2>
+                
+                <div class="anilist-search-wrapper" style="margin-bottom:25px; position:relative;">
+                    <div style="font-size:0.8rem; font-weight:600; margin-bottom:8px; opacity:0.7;">🔍 从 AniList 快速搜索填充</div>
+                    <input type="text" id="anilist-search" placeholder="输入番剧名称搜索..." style="width:100%; padding:12px 18px; border-radius:14px; border:2px solid var(--glass-border); background:var(--input-bg); color:var(--text-main); font-size:0.95rem; box-sizing:border-box;" />
+                    <div id="anilist-results" style="display:none; position:absolute; top:100%; left:0; right:0; background:var(--modal-bg); backdrop-filter:blur(20px); border:1px solid var(--glass-border); border-radius:14px; max-height:300px; overflow-y:auto; z-index:20; box-shadow:0 10px 40px rgba(0,0,0,0.3);">
+                    </div>
+                </div>
+
+                <form id="add-anime-form">
+                    <div class="add-form-grid">
+                        <div class="form-group">
+                            <label>番剧名称 *</label>
+                            <input type="text" name="title" placeholder="输入番剧名称" required />
+                        </div>
+                        <div class="form-group">
+                            <label>状态</label>
+                            <select name="status">
+                                <option value="正在追">🚀 正在追</option>
+                                <option value="已完结">✅ 已完结</option>
+                                <option value="想看" selected>✨ 想看</option>
+                                <option value="弃番">🗑️ 弃番</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Bangumi 评分</label>
+                            <input type="number" name="bgm_score" step="0.1" min="0" max="10" placeholder="0-10" />
+                        </div>
+                        <div class="form-group">
+                            <label>总集数</label>
+                            <input type="number" name="total_episodes" min="0" placeholder="例如: 12" />
+                        </div>
+                        <div class="form-group">
+                            <label>制作公司</label>
+                            <input type="text" name="studio" placeholder="例如: ufotable" />
+                        </div>
+                        <div class="form-group">
+                            <label>导演</label>
+                            <input type="text" name="director" placeholder="例如: 新海诚" />
+                        </div>
+                        <div class="form-group">
+                            <label>封面图片 URL</label>
+                            <input type="url" name="image_url" placeholder="https://..." />
+                        </div>
+                        <div class="form-group full-width">
+                            <label>简介</label>
+                            <textarea name="review" rows="4" placeholder="番剧简介..." style="width:100%; padding:12px 18px; border-radius:14px; border:2px solid var(--glass-border); background:var(--input-bg); color:var(--text-main); font-size:0.95rem; resize:vertical; font-family:inherit; box-sizing:border-box;"></textarea>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:12px; margin-top:30px;">
+                        <button type="submit" class="comment-btn" style="flex:1; padding:14px; font-size:1rem;">✨ 添加番剧</button>
+                        <button type="button" id="cancel-add" class="comment-btn" style="flex:1; padding:14px; font-size:1rem; background:var(--meta-bg); color:var(--text-main);">取消</button>
+                    </div>
+                </form>
+            </div>
+        </dialog>
         </div><!-- /.page-content-reveal -->
 
         <script is:inline>
@@ -717,6 +831,134 @@ const getStatusTheme = (status) => {
                         mascot.style.transform = `scale(1.1) translateY(10px) rotate(${(Math.random() - 0.5) * 4 - 5}deg)`;
                         mascotTimer = null;
                     }, 100);
+                });
+            }
+
+            // ====== 番剧添加功能（管理员可见）======
+            const addBtn = document.getElementById('add-anime-btn');
+            const addModal = document.getElementById('add-anime-modal');
+            const closeAddBtn = document.getElementById('close-add-modal');
+            const addForm = document.getElementById('add-anime-form');
+            const cancelAddBtn = document.getElementById('cancel-add');
+
+            if (addBtn && addModal) {
+                addBtn.addEventListener('click', () => {
+                    addModal.showModal();
+                });
+
+                if (closeAddBtn) {
+                    closeAddBtn.addEventListener('click', () => addModal.close());
+                }
+                if (cancelAddBtn) {
+                    cancelAddBtn.addEventListener('click', () => addModal.close());
+                }
+                addModal.addEventListener('click', (e) => {
+                    if (e.target === addModal) addModal.close();
+                });
+
+                if (addForm) {
+                    addForm.addEventListener('submit', async (e) => {
+                        e.preventDefault();
+                        const formData = new FormData(addForm);
+                        const data = {
+                            title: formData.get('title'),
+                            status: formData.get('status'),
+                            bgm_score: formData.get('bgm_score') || null,
+                            total_episodes: parseInt(formData.get('total_episodes')) || 0,
+                            studio: formData.get('studio') || null,
+                            director: formData.get('director') || null,
+                            image_url: formData.get('image_url') || null,
+                            review: formData.get('review') || null,
+                        };
+
+                        const submitBtn = addForm.querySelector('button[type="submit"]');
+                        submitBtn.disabled = true;
+                        submitBtn.textContent = '添加中...';
+
+                        try {
+                            const res = await fetch('/api/anime', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify(data),
+                            });
+                            const result = await res.json();
+                            if (res.ok) {
+                                window.showToast?.(result.message || '✨ 番剧已添加！');
+                                addModal.close();
+                                addForm.reset();
+                                // 刷新页面展示新番剧
+                                setTimeout(() => location.reload(), 1000);
+                            } else {
+                                window.showToast?.(result.error || '添加失败', 'error');
+                            }
+                        } catch (err) {
+                            window.showToast?.('网络错误', 'error');
+                        } finally {
+                            submitBtn.disabled = false;
+                            submitBtn.textContent = '✨ 添加番剧';
+                        }
+                    });
+                }
+            }
+
+            // 通过 AniList 搜索快速填充添加表单
+            const searchAnilistBtn = document.getElementById('search-anilist-btn');
+            const anilistSearchInput = document.getElementById('anilist-search');
+            const anilistResults = document.getElementById('anilist-results');
+
+            if (searchAnilistBtn && anilistSearchInput && anilistResults) {
+                let searchTimeout = null;
+
+                anilistSearchInput.addEventListener('input', () => {
+                    clearTimeout(searchTimeout);
+                    const q = anilistSearchInput.value.trim();
+                    if (q.length < 2) {
+                        anilistResults.innerHTML = '';
+                        anilistResults.style.display = 'none';
+                        return;
+                    }
+                    searchTimeout = setTimeout(async () => {
+                        try {
+                            const res = await fetch(`/search.json?q=${encodeURIComponent(q)}`);
+                            const data = await res.json();
+                            if (data.data && data.data.length > 0) {
+                                anilistResults.style.display = 'block';
+                                anilistResults.innerHTML = data.data.map(item => `
+                                    <div class="anilist-result-item" data-title="${item.title}" data-image="${item.image}" data-score="${item.score}" data-desc="${(item.description || '').replace(/<[^>]*>/g, '').substring(0, 200)}">
+                                        <img src="${item.image}" alt="${item.title}" style="width:40px;height:56px;object-fit:cover;border-radius:4px;" />
+                                        <div>
+                                            <div style="font-weight:600;font-size:0.9rem;">${item.title}</div>
+                                            <div style="font-size:0.75rem;opacity:0.7;">⭐ ${item.score} | ${item.year || '未知年份'}</div>
+                                        </div>
+                                    </div>
+                                `).join('');
+
+                                anilistResults.querySelectorAll('.anilist-result-item').forEach(el => {
+                                    el.addEventListener('click', () => {
+                                        document.querySelector('input[name="title"]').value = el.dataset.title;
+                                        document.querySelector('input[name="bgm_score"]').value = el.dataset.score;
+                                        if (el.dataset.image) {
+                                            document.querySelector('input[name="image_url"]').value = el.dataset.image;
+                                        }
+                                        anilistResults.style.display = 'none';
+                                        anilistSearchInput.value = '';
+                                        window.showToast?.(`📋 已填充《${el.dataset.title}》的信息`);
+                                    });
+                                });
+                            } else {
+                                anilistResults.style.display = 'block';
+                                anilistResults.innerHTML = '<div style="padding:10px;color:#999;">未找到相关番剧</div>';
+                            }
+                        } catch (err) {
+                            console.error('AniList search error:', err);
+                        }
+                    }, 500);
+                });
+
+                document.addEventListener('click', (e) => {
+                    if (!e.target.closest('.anilist-search-wrapper')) {
+                        anilistResults.style.display = 'none';
+                    }
                 });
             }
         </script>

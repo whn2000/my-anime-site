@@ -1,9 +1,15 @@
 // src/lib/auth.js
 // 认证与会话管理工具库
+//
+// 依赖模块：
+// - db.js: 数据库查询封装 (会话管理、验证码校验)
+
+import { getSessionUser, insertSession, removeSession } from './db.js';
 
 /**
-/**
- * 强密码哈希增强 (自动升级到 PBKDF2) 
+ * 对密码进行 SHA-256 哈希（用于旧密码兼容验证）
+ * @param {string} password - 明文密码
+ * @returns {Promise<string>} 十六进制哈希字符串
  */
 export async function hashPassword(password) {
   const msgUint8 = new TextEncoder().encode(password);
@@ -11,9 +17,15 @@ export async function hashPassword(password) {
   return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+/**
+ * 验证密码 - 自动兼容旧版 SHA-256 和新版 PBKDF2 哈希
+ * @param {string} password - 明文密码
+ * @param {string} storedHash - 数据库中存储的哈希值
+ * @returns {Promise<boolean>}
+ */
 export async function verifyPassword(password, storedHash) {
   if (storedHash.includes(':')) {
-    const [saltHex, pbkdf2Hex] = storedHash.split(':');
+    const [saltHex] = storedHash.split(':');
     const newHash = await generatePbkdf2Hash(password, saltHex);
     return newHash === storedHash;
   } else {
@@ -21,6 +33,12 @@ export async function verifyPassword(password, storedHash) {
   }
 }
 
+/**
+ * 使用 PBKDF2 生成强密码哈希（带随机盐，迭代 100,000 次）
+ * @param {string} password - 明文密码
+ * @param {string|null} saltHexStr - 可选的盐值（用于验证已有哈希）
+ * @returns {Promise<string>} 格式 "salt:hash" 的十六进制字符串
+ */
 export async function generatePbkdf2Hash(password, saltHexStr = null) {
   const enc = new TextEncoder();
   const passwordKey = await crypto.subtle.importKey(
@@ -53,6 +71,7 @@ export async function generatePbkdf2Hash(password, saltHexStr = null) {
   const finalHashHex = Array.from(new Uint8Array(derivedBits)).map(b => b.toString(16).padStart(2, '0')).join('');
   return `${finalSaltHex}:${finalHashHex}`;
 }
+
 /**
  * 生成随机 Session Token (64 字符十六进制)
  */
@@ -83,53 +102,19 @@ export function generateVerifyCode() {
 }
 
 /**
- * 通过 Resend API 发送邮件 (Cloudflare Workers 环境)
- */
-export async function sendEmailWithResend(apiKey, to, subject, html) {
-  if (!apiKey) throw new Error("RESEND_API_KEY is not configured.");
-  
-  const res = await fetch('https://api.resend.com/emails', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${apiKey}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      from: 'onboarding@resend.dev', // Resend 测试限制：必须用这个发件人
-      to: [to],
-      subject: subject,
-      html: html
-    })
-  });
-
-  const data = await res.json();
-  if (!res.ok) {
-    throw new Error(data.message || '邮件发送失败');
-  }
-  return data;
-}
-
-/**
- * 校验邮箱验证码
+ * 校验邮箱验证码（委托给 db.js）
  * @param {D1Database} db 
  * @param {string} email 
  * @param {string} code 
  * @param {string} purpose 'register' | 'login' | 'reset'
  */
 export async function checkVerificationCode(db, email, code, purpose) {
-  const record = await db.prepare(
-    "SELECT * FROM verification_codes WHERE email = ? AND code = ? AND purpose = ? AND expires_at > datetime('now') ORDER BY created_at DESC LIMIT 1"
-  ).bind(email, code, purpose).first();
-
-  if (!record) return false;
-
-  // 验证码验证成功后，立即让它作废，防止暴力重用
-  await db.prepare("DELETE FROM verification_codes WHERE id = ?").bind(record.id).run();
-  return true;
+  const { verifyCode } = await import('./db.js');
+  return verifyCode(email, code, purpose);
 }
 
 /**
- * 创建会话 - 在 DB 中插入 session 记录，返回 token
+ * 创建会话 - 委托给 db.js 实现
  * @param {D1Database} db
  * @param {number} userId
  * @returns {Promise<string>} session token
@@ -137,30 +122,20 @@ export async function checkVerificationCode(db, email, code, purpose) {
 export async function createSession(db, userId) {
   const token = generateToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  await db.prepare(
-    "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)"
-  ).bind(token, userId, expiresAt).run();
+  await insertSession(userId, token, expiresAt);
   return token;
 }
 
 /**
- * 从 Cookie 获取当前登录用户
+ * 从 Cookie 获取当前登录用户（委托给 db.js）
  * @param {D1Database} db
  * @param {import('astro').AstroCookies} cookies
- * @returns {Promise<{id: number, email: string, username: string, role: string} | null>}
+ * @returns {Promise<Object|null>}
  */
 export async function getCurrentUser(db, cookies) {
   const token = cookies.get('session_token')?.value;
   if (!token) return null;
-
-  const row = await db.prepare(`
-    SELECT u.id, u.email, u.username, u.role
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    WHERE s.token = ? AND s.expires_at > datetime('now')
-  `).bind(token).first();
-
-  return row || null;
+  return await getSessionUser(token);
 }
 
 /**
@@ -169,7 +144,7 @@ export async function getCurrentUser(db, cookies) {
 export async function destroySession(db, cookies) {
   const token = cookies.get('session_token')?.value;
   if (token) {
-    await db.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+    await removeSession(token);
   }
 }
 
