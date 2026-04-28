@@ -14,26 +14,99 @@ export function getDB() {
   return env.DB;
 }
 
+// ==================== 缓存工具 ====================
+
+/**
+ * 带 Cloudflare Cache API 的数据库查询缓存
+ * 减少高频 D1 查询，提升响应速度
+ * 
+ * @param {string} cacheKey - 缓存键名
+ * @param {number} ttlSeconds - 缓存有效期（秒）
+ * @param {Function} queryFn - 实际执行查询的函数
+ * @returns {Promise<any>}
+ */
+const cache = caches.default;
+
+export async function cachedQuery(cacheKey, ttlSeconds, queryFn) {
+  try {
+    const cachedRes = await cache.match(cacheKey);
+    if (cachedRes) {
+      try {
+        return await cachedRes.json();
+      } catch {
+        // 缓存损坏，忽略
+      }
+    }
+  } catch {
+    // 缓存读取失败，继续查询
+  }
+
+  const result = await queryFn();
+
+  try {
+    const response = new Response(JSON.stringify(result), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': `public, s-maxage=${ttlSeconds}`,
+      },
+    });
+    await cache.put(cacheKey, response);
+  } catch {
+    // 缓存写入失败不影响业务
+  }
+
+  return result;
+}
+
+/**
+ * 使指定缓存键失效
+ * @param {string} cacheKey
+ */
+export async function invalidateCache(cacheKey) {
+  try {
+    await cache.delete(cacheKey);
+  } catch {
+    // 忽略
+  }
+}
+
+/** 缓存键常量 */
+export const CACHE_KEYS = {
+  ANIME_LIST: 'https://internal/cache/anime-list',
+  ANIME_COUNT: 'https://internal/cache/anime-count',
+};
+
+/**
+ * 番剧相关缓存失效
+ */
+async function invalidateAnimeCaches() {
+  await Promise.all([
+    invalidateCache(CACHE_KEYS.ANIME_LIST),
+    invalidateCache(CACHE_KEYS.ANIME_COUNT),
+  ]);
+}
+
 // ==================== 番剧相关 ====================
 
 /**
- * 获取番剧列表（含聚合评分）
+ * 获取番剧列表（含聚合评分，60s 缓存）
  * @returns {Promise<Array>}
  */
 export async function getAllAnime() {
-  const db = getDB();
-  const { results } = await db.prepare(`
-    SELECT 
-      a.*, 
-      ROUND(AVG(s.score), 1) as avg_score,
-      COUNT(s.id) as score_count,
-      (SELECT review FROM anime_scores WHERE anime_id = a.id AND review IS NOT NULL AND review != '' ORDER BY created_at DESC LIMIT 1) as latest_review
-    FROM anime a
-    LEFT JOIN anime_scores s ON a.id = s.anime_id
-    GROUP BY a.id
-    ORDER BY a.id DESC
-  `).all();
-  return results;
+  return cachedQuery(CACHE_KEYS.ANIME_LIST, 60, async () => {
+    const db = getDB();
+    const { results } = await db.prepare(`
+      SELECT 
+        a.*,
+        ROUND(AVG(s.score), 1) as avg_score,
+        COUNT(s.id) as score_count
+      FROM anime a
+      LEFT JOIN anime_scores s ON a.id = s.anime_id
+      GROUP BY a.id
+      ORDER BY a.id DESC
+    `).all();
+    return results;
+  });
 }
 
 /**
@@ -68,6 +141,7 @@ export async function createAnime(data) {
     data.total_episodes ?? 0,
     data.added_by
   ).run();
+  await invalidateAnimeCaches();
   return result.meta.last_row_id;
 }
 
@@ -106,6 +180,7 @@ export async function updateAnime(id, updates) {
 
   values.push(id);
   await db.prepare(`UPDATE anime SET ${fields.join(', ')} WHERE id = ?`).bind(...values).run();
+  await invalidateAnimeCaches();
   return true;
 }
 
@@ -118,6 +193,7 @@ export async function deleteAnime(id) {
   await db.prepare("DELETE FROM anime_scores WHERE anime_id = ?").bind(id).run();
   await db.prepare("DELETE FROM comments WHERE anime_id = ?").bind(id).run();
   await db.prepare("DELETE FROM anime WHERE id = ?").bind(id).run();
+  await invalidateAnimeCaches();
 }
 
 /**
@@ -220,7 +296,9 @@ export async function upsertScore(animeId, userId, score, review) {
     VALUES (?, ?, ?, ?)
     ON CONFLICT(anime_id, user_id) 
     DO UPDATE SET score = excluded.score, review = excluded.review, created_at = datetime('now')
-  `).bind(animeId, userId, score, review).run();
+  `  ).bind(animeId, userId, score, review).run();
+  // 评分变更，番剧列表缓存失效
+  await invalidateAnimeCaches();
 }
 
 // ==================== Session 相关 ====================
@@ -261,6 +339,54 @@ export async function insertSession(userId, token, expiresAt) {
 export async function removeSession(token) {
   const db = getDB();
   await db.prepare("DELETE FROM sessions WHERE token = ?").bind(token).run();
+}
+
+/**
+ * 更新 Session 最后活跃时间，并进行 Token 轮换
+ * 如果距上次活跃超过 15 分钟，生成新 token 并删除旧 token
+ * 
+ * @param {string} token
+ * @returns {Promise<{newToken: string|null}>} 
+ */
+export async function updateSessionLastActive(token) {
+  const db = getDB();
+  
+  // 获取当前 session 信息
+  const session = await db.prepare(
+    "SELECT id, user_id, expires_at, last_active_at FROM sessions WHERE token = ?"
+  ).bind(token).first();
+  
+  if (!session) return { newToken: null };
+
+  const now = Date.now();
+  const lastActive = session.last_active_at 
+    ? new Date(session.last_active_at + 'Z').getTime() 
+    : 0;
+  
+  // 15 分钟轮换阈值
+  const ROTATION_INTERVAL = 15 * 60 * 1000;
+
+  if (now - lastActive > ROTATION_INTERVAL) {
+    // 需要轮换：生成新 token，删除旧 token
+    const newToken = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+    
+    await db.prepare(
+      "INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)"
+    ).bind(newToken, session.user_id, session.expires_at).run();
+    
+    await db.prepare("DELETE FROM sessions WHERE id = ?").bind(session.id).run();
+    
+    return { newToken };
+  }
+
+  // 更新最后活跃时间（不轮换）
+  await db.prepare(
+    "UPDATE sessions SET last_active_at = datetime('now') WHERE id = ?"
+  ).bind(session.id).run();
+
+  return { newToken: null };
 }
 
 // ==================== 验证码相关 ====================

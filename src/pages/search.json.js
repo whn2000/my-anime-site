@@ -9,17 +9,18 @@
  */
 export const prerender = false;
 
-import { searchAnime } from '../../lib/anilist.js';
-import { success, serverError } from '../../lib/response.js';
+import { searchAnime } from '../lib/anilist.js';
+import { success, serverError } from '../lib/response.js';
 
 export async function GET({ url }) {
   try {
     const keyword = url.searchParams.get('q');
     if (!keyword) return success({ data: [] });
 
-    const data = await searchAnime(keyword);
+        const data = await searchAnime(keyword);
     return success({ data });
     } catch (e) {
-    return serverError(e.message);
+    console.error('Search error:', e);
+    return serverError('搜索失败');
     }
 }

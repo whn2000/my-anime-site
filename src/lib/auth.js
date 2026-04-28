@@ -4,7 +4,7 @@
 // 依赖模块：
 // - db.js: 数据库查询封装 (会话管理、验证码校验)
 
-import { getSessionUser, insertSession, removeSession } from './db.js';
+import { getSessionUser, insertSession, removeSession, updateSessionLastActive } from './db.js';
 
 /**
  * 对密码进行 SHA-256 哈希（用于旧密码兼容验证）
@@ -127,7 +127,11 @@ export async function createSession(db, userId) {
 }
 
 /**
- * 从 Cookie 获取当前登录用户（委托给 db.js）
+ * 从 Cookie 获取当前登录用户（含 Session 轮换机制）
+ * 
+ * 每次请求检查上次活跃时间，如果距上次活跃超过 15 分钟，
+ * 则生成新 token 并清除旧 token，降低会话固定攻击风险。
+ * 
  * @param {D1Database} db
  * @param {import('astro').AstroCookies} cookies
  * @returns {Promise<Object|null>}
@@ -135,7 +139,22 @@ export async function createSession(db, userId) {
 export async function getCurrentUser(db, cookies) {
   const token = cookies.get('session_token')?.value;
   if (!token) return null;
-  return await getSessionUser(token);
+
+  const user = await getSessionUser(token);
+  if (!user) return null;
+
+  // Session 轮换：检查上次活跃时间（15 分钟阈值）
+  try {
+    const rotated = await updateSessionLastActive(token);
+    if (rotated && rotated.newToken) {
+      // 设置新的 Cookie 替换旧的
+      setSessionCookie(cookies, rotated.newToken);
+    }
+  } catch {
+    // 轮换失败不影响登录状态
+  }
+
+  return user;
 }
 
 /**

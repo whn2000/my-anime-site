@@ -5,7 +5,53 @@
  * 供所有 API 端点统一使用。
  */
 import { getCurrentUser, hasRole } from '../lib/auth.js';
-import { unauthorized, forbidden } from '../lib/response.js';
+import { unauthorized, forbidden, error } from '../lib/response.js';
+
+/**
+ * CSRF 防护：检查请求来源
+ * 对 POST/PUT/DELETE 请求验证 Origin 或 Referer 头
+ * 
+ * @param {Request} request
+ * @returns {boolean} 是否合法的请求来源
+ */
+export function csrfGuard(request) {
+  // 仅对写操作检查
+  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(request.method)) {
+    return true;
+  }
+
+  const origin = request.headers.get('Origin');
+  const referer = request.headers.get('Referer');
+
+  // 允许没有来源的请求（例如 API 客户端）
+  if (!origin && !referer) return true;
+
+  const allowed = [
+    'https://my-anime-site.pages.dev',
+    'http://localhost:4321',
+    'http://localhost:8788', // wrangler dev
+  ];
+
+  if (origin) {
+    if (allowed.some(a => origin.startsWith(a))) return true;
+  }
+  if (referer) {
+    if (allowed.some(a => referer.startsWith(a))) return true;
+  }
+
+  return false;
+}
+
+/**
+ * CSRF 中间件包装器
+ * 用法: export async function POST({ request }) { return csrfMiddleware(request, () => handlePost(request)); }
+ */
+export function csrfMiddleware(request, handler) {
+  if (!csrfGuard(request)) {
+    return error('CSRF 校验失败，请求来源不被允许', { status: 403 });
+  }
+  return handler();
+}
 
 /**
  * 从请求中获取当前登录用户

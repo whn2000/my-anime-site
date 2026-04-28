@@ -356,7 +356,11 @@ const { currentUser } = Astro.props;
 
     // 主题切换
     const themeBtn = document.getElementById("theme-toggle");
-    function updateThemeBtn(theme) { themeBtn.innerText = theme === "dark" ? "🌙 暗" : "☀️ 明"; }
+    function updateThemeBtn(theme) {
+        themeBtn.innerText = theme === "dark" ? "🌙 暗" : "☀️ 明";
+        themeBtn.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
+        themeBtn.title = theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式';
+    }
     updateThemeBtn(document.documentElement.getAttribute("data-theme"));
     themeBtn.addEventListener("click", () => {
         const current = document.documentElement.getAttribute("data-theme");
@@ -376,19 +380,39 @@ const { currentUser } = Astro.props;
     let vditorAssetsLoaded = false;
 
     async function loadVditorAssets() {
+        // 全局标记，确保只加载一次
+        if (window.__vditorLoaded) {
+            vditorAssetsLoaded = true;
+            return;
+        }
         if (vditorAssetsLoaded) return;
         
         return new Promise((resolve) => {
-            const link = document.createElement('link');
-            link.rel = 'stylesheet';
-            link.href = 'https://unpkg.com/vditor@3.10.7/dist/index.css';
-            document.head.appendChild(link);
+            // 检查是否已有样式
+            if (!document.querySelector('link[href*="vditor"][rel="stylesheet"]')) {
+                const link = document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = 'https://unpkg.com/vditor@3.10.7/dist/index.css';
+                document.head.appendChild(link);
+            }
+
+            if (typeof Vditor !== 'undefined') {
+                window.__vditorLoaded = true;
+                vditorAssetsLoaded = true;
+                resolve();
+                return;
+            }
 
             const script = document.createElement('script');
             script.src = 'https://unpkg.com/vditor@3.10.7/dist/index.min.js';
             script.onload = () => {
+                window.__vditorLoaded = true;
                 vditorAssetsLoaded = true;
                 resolve();
+            };
+            script.onerror = () => {
+                console.warn('Vditor 加载失败，回退到普通文本输入');
+                resolve(); // 静默降级
             };
             document.head.appendChild(script);
         });

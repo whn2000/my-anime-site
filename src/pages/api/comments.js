@@ -14,6 +14,7 @@ export const prerender = false;
 import { getComments, getScores, createComment, getCommentById, deleteComment } from '../../lib/db.js';
 import { getCurrentUser } from '../../lib/auth.js';
 import { success, error, unauthorized, forbidden, serverError } from '../../lib/response.js';
+import { csrfGuard } from '../../lib/middleware.js';
 /**
  * GET - 获取指定番剧的评论列表和独立评分
  */
@@ -39,7 +40,8 @@ export async function GET({ url, cookies }) {
         : null,
     });
   } catch (e) {
-    return serverError('获取评论失败：' + e.message);
+    console.error('Fetch comments error:', e);
+    return serverError('获取评论失败');
   }
 }
 
@@ -48,6 +50,10 @@ export async function GET({ url, cookies }) {
  */
 export async function POST({ request, cookies }) {
   try {
+    if (!csrfGuard(request)) {
+      return error('CSRF 校验失败', { status: 403 });
+    }
+
     const { env } = await import('cloudflare:workers');
     const db = env.DB;
     const user = await getCurrentUser(db, cookies);
@@ -63,7 +69,8 @@ export async function POST({ request, cookies }) {
     await createComment(anime_id, user.id, content.trim());
     return success({ message: '评论成功' });
   } catch (e) {
-    return serverError('评论失败：' + e.message);
+    console.error('Create comment error:', e);
+    return serverError('评论失败');
   }
 }
 
@@ -72,6 +79,10 @@ export async function POST({ request, cookies }) {
  */
 export async function DELETE({ request, cookies }) {
   try {
+    if (!csrfGuard(request)) {
+      return error('CSRF 校验失败', { status: 403 });
+    }
+
     const { env } = await import('cloudflare:workers');
     const db = env.DB;
     const user = await getCurrentUser(db, cookies);
@@ -92,7 +103,8 @@ export async function DELETE({ request, cookies }) {
     await deleteComment(comment_id);
     return success({ message: '评论已删除' });
   } catch (e) {
-    return serverError('删除失败：' + e.message);
+    console.error('Delete comment error:', e);
+    return serverError('删除失败');
   }
 }
 

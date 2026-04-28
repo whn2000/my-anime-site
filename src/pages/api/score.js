@@ -3,12 +3,17 @@ export const prerender = false;
 import { upsertScore } from '../../lib/db.js';
 import { getCurrentUser, hasRole } from '../../lib/auth.js';
 import { success, error, forbidden, serverError } from '../../lib/response.js';
+import { csrfGuard } from '../../lib/middleware.js';
 
 /**
  * POST - UPSERT 评分与评价
  */
 export async function POST({ request, cookies }) {
   try {
+    if (!csrfGuard(request)) {
+      return error('CSRF 校验失败', { status: 403 });
+    }
+
     const { env } = await import('cloudflare:workers');
     const db = env.DB;
     const user = await getCurrentUser(db, cookies);
@@ -33,7 +38,8 @@ export async function POST({ request, cookies }) {
       data: { score: numericScore, review },
     });
   } catch (e) {
-    return serverError('数据库错误：' + e.message);
+    console.error('Save score error:', e);
+    return serverError('保存评分失败');
   }
 }
 

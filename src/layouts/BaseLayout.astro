@@ -25,11 +25,41 @@ const {
     <meta property="og:type" content="website" />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
+    <meta property="og:image" content="/mascot.png" />
+    <meta property="og:locale" content="zh_CN" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
     
-    <!-- Preconnect to Google Fonts and specialized fonts -->
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://my-anime-site.pages.dev/" />
+    
+    <!-- JSON-LD 结构化数据 -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      "name": "我的次元日记",
+      "description": "记录每一个心动的追番瞬间。在这里你可以探索高质量的番剧、查询 Bangumi 评分与获取详尽百科！",
+      "about": {
+        "@type": "Thing",
+        "name": "动漫追番列表"
+      },
+      "mainEntity": {
+        "@type": "ItemList",
+        "itemListElement": []
+      }
+    }
+    </script>
+    
+    <!-- Google Fonts — 非阻塞加载，避免阻塞首屏渲染 -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=Inter:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet" />
+    <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=Inter:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@700&display=swap" 
+          onload="this.onload=null;this.rel='stylesheet'" />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@700;900&family=Inter:wght@400;600;700;800&family=Plus+Jakarta+Sans:wght@700&display=swap" rel="stylesheet" />
+    </noscript>
     
     <script is:inline>
         // 早于 body 渲染提取主体，避免闪烁

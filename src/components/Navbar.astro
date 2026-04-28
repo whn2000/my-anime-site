@@ -5,7 +5,7 @@ export interface Props {
 }
 const { currentUser } = Astro.props;
 ---
-<div class="navbar">
+<nav class="navbar" aria-label="主导航">
     {
         currentUser ? (
             <>
@@ -28,9 +28,10 @@ const { currentUser } = Astro.props;
         id="theme-toggle"
         class="user-badge"
         aria-label="切换主题"
-        title="切换暗/亮色主题"
+        aria-pressed="false"
+        title="切换暗/亮色主题 (当前为暗色)"
         style="cursor:pointer; border:none; margin-left: 5px;"
     >
         🌙 暗
     </button>
-</div>
+</nav>

@@ -91,7 +91,7 @@ export async function POST({ request }) {
     return success({ message: '验证码已发送，请查看邮箱' });
   } catch (e) {
     // 防止返回详细错误信息（邮箱探测防护）
-    console.error('Send code error:', e.message);
+    console.error('Send code error:', e);
     return serverError('验证码发送失败，请稍后重试');
   }
 }

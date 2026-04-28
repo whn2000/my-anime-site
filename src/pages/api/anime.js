@@ -10,12 +10,14 @@
  * - db.js: 数据库查询封装
  * - auth.js: 认证与会话管理
  * - response.js: 统一响应格式
+ * - middleware.js: CSRF 防护
  */
 export const prerender = false;
 
 import { getAnimeById, createAnime, updateAnime, deleteAnime } from '../../lib/db.js';
 import { getCurrentUser, hasRole } from '../../lib/auth.js';
 import { success, error, notFound, serverError } from '../../lib/response.js';
+import { csrfGuard } from '../../lib/middleware.js';
 
 /**
  * GET - 获取番剧详情
@@ -39,6 +41,11 @@ export async function GET({ url }) {
  */
 export async function POST({ request, cookies }) {
   try {
+    // CSRF 防护
+    if (!csrfGuard(request)) {
+      return error('CSRF 校验失败', { status: 403 });
+    }
+
     const { env } = await import('cloudflare:workers');
     const db = env.DB;
     const user = await getCurrentUser(db, cookies);
@@ -67,7 +74,8 @@ export async function POST({ request, cookies }) {
 
     return success({ message: `✨ 《${title}》已添加到追番列表`, id: newId });
   } catch (e) {
-    return serverError('添加失败：' + e.message);
+    console.error('Create anime error:', e);
+    return serverError('添加失败');
   }
 }
 
@@ -76,6 +84,10 @@ export async function POST({ request, cookies }) {
  */
 export async function PUT({ request, cookies }) {
   try {
+    if (!csrfGuard(request)) {
+      return error('CSRF 校验失败', { status: 403 });
+    }
+
     const { env } = await import('cloudflare:workers');
     const db = env.DB;
     const user = await getCurrentUser(db, cookies);
@@ -94,15 +106,20 @@ export async function PUT({ request, cookies }) {
 
     return success({ message: '✅ 番剧信息已更新' });
   } catch (e) {
-    return serverError('更新失败：' + e.message);
+    console.error('Update anime error:', e);
+    return serverError('更新失败');
   }
 }
 
 /**
  * DELETE - 删除番剧
  */
-export async function DELETE({ url, cookies }) {
+export async function DELETE({ url, request, cookies }) {
   try {
+    if (!csrfGuard(request)) {
+      return error('CSRF 校验失败', { status: 403 });
+    }
+
     const { env } = await import('cloudflare:workers');
     const db = env.DB;
     const user = await getCurrentUser(db, cookies);
@@ -117,7 +134,8 @@ export async function DELETE({ url, cookies }) {
     await deleteAnime(animeId);
     return success({ message: '🗑️ 番剧及相关数据已删除' });
   } catch (e) {
-    return serverError('删除失败：' + e.message);
+    console.error('Delete anime error:', e);
+    return serverError('删除失败');
   }
 }
 

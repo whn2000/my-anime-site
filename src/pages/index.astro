@@ -568,7 +568,7 @@ const animeList = await getAllAnime();
     </style>
 
     <body style={`--bgUrl: url('${bgUrl}')`}>
-        <div class="page-content-reveal" id="main-content">
+        <main class="page-content-reveal" id="main-content">
         <div class="bg-overlay"></div>
         <Navbar currentUser={currentUser} />
 
@@ -579,13 +579,13 @@ const animeList = await getAllAnime();
             </header>
 
             {animeList.length > 0 && (
-                <div class="toolbar">
+                <div class="toolbar" role="search" aria-label="搜索番剧">
                     <div class="search-box">
-                        <span style="opacity:0.7">🔍</span>
-                        <input type="text" id="global-search" placeholder="在你的次元宇宙中搜索..." />
+                        <span style="opacity:0.7" aria-hidden="true">🔍</span>
+                        <input type="search" id="global-search" placeholder="在你的次元宇宙中搜索..." aria-label="搜索番剧名称" />
                     </div>
-                    <div class="mascot-container">
-                        <img src="/mascot.png" alt="Mascot" class="mascot-img" id="mascot" />
+                    <div class="mascot-container" aria-hidden="true">
+                        <img src="/mascot.png" alt="" class="mascot-img" id="mascot" />
                     </div>
                 </div>
             )}
@@ -608,13 +608,13 @@ const animeList = await getAllAnime();
                                 {category.label}
                                 <span class="count-badge">{list.length}</span>
                             </summary>
-                            <div class="grid">
+                            <ul class="grid" role="list" aria-label={`${category.label} 番剧列表`}>
                                 {list.map((anime, index) => (
-                                    <div class="anime-card-wrap" data-title={anime.title.toLowerCase()} data-status={anime.status}>
+                                    <li class="anime-card-wrap" data-title={anime.title.toLowerCase()} data-status={anime.status}>
                                         <AnimeCard anime={anime} theme={getStatusTheme(anime.status)} index={index} currentUser={currentUser} />
-                                    </div>
+                                    </li>
                                 ))}
-                            </div>
+                            </ul>
                         </details>
                     );
                 })
@@ -697,6 +697,18 @@ const animeList = await getAllAnime();
         </div><!-- /.page-content-reveal -->
 
         <script is:inline>
+            // 键盘快捷键：按 "/" 聚焦搜索
+            document.addEventListener('keydown', (e) => {
+                if (e.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) {
+                    e.preventDefault();
+                    document.getElementById('global-search')?.focus();
+                }
+                // ESC 关闭任何打开的弹窗
+                if (e.key === 'Escape') {
+                    document.querySelectorAll('dialog[open]').forEach(d => d.close());
+                }
+            });
+
             // 模糊搜索功能
             const searchInput = document.getElementById('global-search');
             if (searchInput) {

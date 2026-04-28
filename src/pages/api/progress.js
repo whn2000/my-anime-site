@@ -15,12 +15,17 @@ export const prerender = false;
 import { getAnimeById, updateAnime } from '../../lib/db.js';
 import { getCurrentUser, hasRole } from '../../lib/auth.js';
 import { success, error, forbidden, notFound, serverError } from '../../lib/response.js';
+import { csrfGuard } from '../../lib/middleware.js';
 
 /**
  * POST - 更新追番进度
  */
 export async function POST({ request, cookies }) {
   try {
+    if (!csrfGuard(request)) {
+      return error('CSRF 校验失败', { status: 403 });
+    }
+
     const { env } = await import('cloudflare:workers');
   const db = env.DB;
   const user = await getCurrentUser(db, cookies);
@@ -57,7 +62,8 @@ export async function POST({ request, cookies }) {
     total_episodes: totalEps,
   });
   } catch (e) {
-    return serverError('更新进度失败：' + e.message);
+    console.error('Update progress error:', e);
+    return serverError('更新进度失败');
 }
 }
 
