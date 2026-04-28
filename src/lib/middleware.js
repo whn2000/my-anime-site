@@ -26,10 +26,17 @@ export function csrfGuard(request) {
   // 允许没有来源的请求（例如 API 客户端）
   if (!origin && !referer) return true;
 
+  // 动态构建允许的来源列表
+  // 从 Host 头推断当前站点域名，确保同源请求总是可通过校验
+  const host = request.headers.get('Host') || '';
+  const protocol = request.headers.get('X-Forwarded-Proto') || 'https';
+  const currentOrigin = `${protocol}://${host}`;
+
   const allowed = [
-    'https://my-anime-site.pages.dev',
-    'http://localhost:4321',
-    'http://localhost:8788', // wrangler dev
+    currentOrigin,                                   // 动态：当前站点
+    'https://my-anime-site.pages.dev',               // 保留：已部署的生产域名
+    'http://localhost:4321',                         // 保留：astro dev
+    'http://localhost:8788',                         // 保留：wrangler dev
   ];
 
   if (origin) {
@@ -124,3 +131,4 @@ export async function createRequestContext(cookies) {
   const user = await getCurrentUser(db, cookies);
   return { db, user };
 }
+
