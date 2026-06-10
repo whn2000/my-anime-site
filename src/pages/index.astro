@@ -51,6 +51,50 @@ const animeList = await getAllAnime();
             --bg-overlay: rgba(255, 255, 255, 0.2);
         }
 
+        :root[data-theme="miku"] {
+            --primary: #007a72; /* Darker teal for contrast */
+            --primary-shadow: rgba(0, 122, 114, 0.25);
+            --glass: rgba(255, 255, 255, 0.85); /* Frosted white glass cards */
+            --glass-border: rgba(57, 197, 187, 0.35);
+            --card-shadow: 0 15px 35px 0 rgba(0, 50, 48, 0.1);
+            --text-main: #0c2d2a; /* Dark teal text */
+            --meta-bg: rgba(57, 197, 187, 0.15);
+            --review-bg: rgba(255, 255, 255, 0.95);
+            --modal-bg: rgba(255, 255, 255, 0.95);
+            --input-bg: rgba(255, 255, 255, 0.9);
+            --bg-overlay: rgba(255, 255, 255, 0.05);
+        }
+
+        :root[data-theme="miku"] body::before {
+            background-image: none !important;
+            background: linear-gradient(135deg, #39c5bb, #73e6dd) !important;
+        }
+
+        :root[data-theme="miku"] .progress-btn {
+            background: linear-gradient(135deg, #39c5bb, #007a72) !important;
+            box-shadow: 0 3px 12px rgba(57, 197, 187, 0.3) !important;
+            color: white !important;
+        }
+
+        :root[data-theme="miku"] .progress-btn:hover {
+            box-shadow: 0 5px 18px rgba(57, 197, 187, 0.5) !important;
+        }
+
+        :root[data-theme="miku"] .progress-bar-fill {
+            background: linear-gradient(90deg, #39c5bb, #73e6dd, #c4faf6, #73e6dd, #39c5bb) !important;
+            box-shadow: 0 0 12px rgba(57, 197, 187, 0.4), inset 0 1px 1px rgba(255,255,255,0.35) !important;
+        }
+
+        :root[data-theme="miku"] .floating-add-btn {
+            background: linear-gradient(135deg, #39c5bb, #007a72) !important;
+            box-shadow: 0 8px 25px rgba(57, 197, 187, 0.4) !important;
+        }
+
+        #theme-select option {
+            background: var(--modal-bg);
+            color: var(--text-main);
+        }
+
         /* 全屏沉浸式背景 */
         body {
             font-family: "Plus Jakarta Sans", "Noto Sans SC", sans-serif;
@@ -97,21 +141,43 @@ const animeList = await getAllAnime();
         .navbar .user-badge { background: var(--meta-bg); color: var(--text-main); border: 1px solid var(--glass-border); padding: 4px 12px; border-radius: 100px; font-size: 0.8rem; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); }
 
         .container { max-width: 1200px; margin: 0 auto; padding: 120px 20px 100px; position: relative; }
-        .header { text-align: center; margin-bottom: 80px; color: var(--text-main); }
+        .header { 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center; 
+            margin-bottom: 80px; 
+            color: var(--text-main); 
+        }
         .header h1 { 
-            font-size: clamp(2.5rem, 6vw, 4.5rem); 
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
             margin: 0; 
-            letter-spacing: -2px; 
-            font-weight: 900; 
-            background: linear-gradient(to bottom, var(--text-main), var(--primary)); 
-            -webkit-background-clip: text; 
-            -webkit-text-fill-color: transparent;
             filter: drop-shadow(0 10px 20px rgba(0,0,0,0.1));
+        }
+        .main-title {
+            font-size: clamp(2.5rem, 6vw, 4.5rem); 
+            letter-spacing: -1px; 
+            font-weight: 900; 
+            color: var(--text-main);
+            line-height: 1.1;
+        }
+        .sub-title {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+            font-weight: 800;
+            letter-spacing: 2px;
+            color: var(--primary);
+            text-transform: uppercase;
+            line-height: 1.2;
+            opacity: 0.9;
         }
         .header p { 
             font-size: 1.25rem; 
             opacity: 0.6; 
-            margin-top: 15px; 
+            margin-top: 20px; 
             font-weight: 500; 
             letter-spacing: 0.1em;
             color: var(--primary);
@@ -372,8 +438,20 @@ const animeList = await getAllAnime();
         .category-title::-webkit-details-marker { display: none; }
         .category-title:hover { color: var(--primary); }
         .category-title .count-badge { font-size: 1rem; background: var(--primary); color: white; padding: 4px 12px; border-radius: 100px; font-weight: 700; box-shadow: 0 5px 15px var(--primary-shadow); }
-        .category-title::before { content: '🌸'; font-size: 1.2rem; transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.265, 1.55); opacity: 0.9; }
-        .category-section[open] .category-title::before { transform: rotate(90deg); }
+        .category-title::before {
+            content: '▸';
+            font-size: 1.3rem;
+            opacity: 0.5;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: inline-block;
+            margin-right: -4px;
+            transform-origin: center;
+        }
+        .category-section[open] .category-title::before {
+            transform: rotate(90deg);
+            opacity: 0.8;
+        }
+
         
         .toolbar { 
             display: flex; 
@@ -406,36 +484,6 @@ const animeList = await getAllAnime();
         }
         .search-box input { background: transparent; border: none; outline: none; color: var(--text-main); font-size: 1.05rem; width: 100%; font-family: 'Inter', sans-serif; }
         .search-box input::placeholder { color: var(--text-main); opacity: 0.4; }
-
-        /* Mascot Container */
-        .mascot-container {
-            position: absolute;
-            right: -100px;
-            bottom: -30px;
-            width: 180px;
-            height: 180px;
-            pointer-events: none;
-            z-index: 11;
-            transition: transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
-            border-radius: 50%;
-            overflow: hidden;
-            border: 4px solid #fff;
-            box-shadow: 0 15px 45px rgba(0,0,0,0.4), inset 0 0 20px rgba(0,0,0,0.1);
-            background-color: white;
-        }
-        .mascot-img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            transform-origin: center;
-            transition: transform 0.5s ease;
-        }
-        .search-box:focus-within ~ .mascot-container {
-            transform: translateX(-10px) scale(1.05);
-        }
-        .search-box:focus-within ~ .mascot-container .mascot-img {
-            transform: rotate(-5deg) translateY(5px);
-        }
         
         .empty-state { text-align: center; padding: 80px 20px; background: var(--glass); backdrop-filter: blur(20px); border-radius: 30px; border: 1px dashed var(--primary); box-shadow: var(--card-shadow); animation: fadeInUp 0.8s ease; }
         .empty-icon { font-size: 5rem; margin-bottom: 20px; animation: float 3s ease-in-out infinite; display: inline-block; }
@@ -574,8 +622,10 @@ const animeList = await getAllAnime();
 
         <div class="container">
             <header class="header">
-                <h1>我的次元日记 🌸</h1>
-                <p>✨ 记录每一个心动的追番瞬间 ✨</p>
+                <h1>
+                    <span class="main-title">FUXE的动画列表</span>
+                    <span class="sub-title">FUXE's ANIME LIST</span>
+                </h1>
             </header>
 
             {animeList.length > 0 && (
@@ -584,15 +634,12 @@ const animeList = await getAllAnime();
                         <span style="opacity:0.7" aria-hidden="true">🔍</span>
                         <input type="search" id="global-search" placeholder="在你的次元宇宙中搜索..." aria-label="搜索番剧名称" />
                     </div>
-                    <div class="mascot-container" aria-hidden="true">
-                        <img src="/mascot.png" alt="" class="mascot-img" id="mascot" />
-                    </div>
                 </div>
             )}
 
             {animeList.length === 0 ? (
                 <div class="empty-state">
-                    <div class="empty-icon">🌸</div>
+                    <div class="empty-icon">✨</div>
                     <div class="empty-title">这里的宇宙空空如也</div>
                     <div class="empty-desc">当前还没有收录任何番剧，请联系管理员添加或登录后台管理。</div>
                 </div>
@@ -621,7 +668,7 @@ const animeList = await getAllAnime();
             )}
 
             <footer class="footer">
-                Powered by <b>Astro</b> & <b>Cloudflare D1</b> | <span style="color: var(--primary)">樱花限定版 🌸</span>
+                Powered by <b>Astro</b> & <b>Cloudflare D1</b>
             </footer>
         </div>
 
@@ -825,26 +872,7 @@ const animeList = await getAllAnime();
                 slider.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
             });
 
-            // 看板娘交互增强
-            const searchBox = document.querySelector('.search-box');
-            const mascot = document.getElementById('mascot');
-            if (searchBox && mascot) {
-                searchInput.addEventListener('focus', () => {
-                    mascot.style.transform = 'scale(1.1) translateY(10px) rotate(-5deg)';
-                });
-                searchInput.addEventListener('blur', () => {
-                    mascot.style.transform = 'scale(1) translateY(0) rotate(0)';
-                });
-                // 监听输入，增加微小晃动（节流处理）
-                let mascotTimer = null;
-                searchInput.addEventListener('input', () => {
-                    if (mascotTimer) return;
-                    mascotTimer = setTimeout(() => {
-                        mascot.style.transform = `scale(1.1) translateY(10px) rotate(${(Math.random() - 0.5) * 4 - 5}deg)`;
-                        mascotTimer = null;
-                    }, 100);
-                });
-            }
+            // 看板娘交互已随图片移除
 
             // ====== 番剧添加功能（管理员可见）======
             const addBtn = document.getElementById('add-anime-btn');

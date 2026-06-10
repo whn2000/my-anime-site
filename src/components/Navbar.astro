@@ -24,14 +24,15 @@ const { currentUser } = Astro.props;
             </>
         )
     }
-    <button
-        id="theme-toggle"
+    <select
+        id="theme-select"
         class="user-badge"
-        aria-label="切换主题"
-        aria-pressed="false"
-        title="切换暗/亮色主题 (当前为暗色)"
-        style="cursor:pointer; border:none; margin-left: 5px;"
+        aria-label="选择主题"
+        title="选择主题模式"
+        style="cursor:pointer; border:1px solid var(--glass-border); padding: 4px 8px; border-radius: 100px; outline: none; display: inline-block; background: var(--meta-bg); color: var(--text-main); font-weight: bold; font-family: inherit; font-size: 0.8rem;"
     >
-        🌙 暗
-    </button>
+        <option value="dark">🌙 暗色</option>
+        <option value="light">☀️ 亮色</option>
+        <option value="miku">🧪 葱绿</option>
+    </select>
 </nav>

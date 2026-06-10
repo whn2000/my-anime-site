@@ -354,25 +354,23 @@ const { currentUser } = Astro.props;
     };
     modal.addEventListener("click", (e) => e.target === modal && modal.close());
 
-    // 主题切换
-    const themeBtn = document.getElementById("theme-toggle");
-    function updateThemeBtn(theme) {
-        themeBtn.innerText = theme === "dark" ? "🌙 暗" : "☀️ 明";
-        themeBtn.setAttribute('aria-pressed', theme === 'light' ? 'true' : 'false');
-        themeBtn.title = theme === 'dark' ? '切换为亮色模式' : '切换为暗色模式';
-    }
-    updateThemeBtn(document.documentElement.getAttribute("data-theme"));
-    themeBtn.addEventListener("click", () => {
-        const current = document.documentElement.getAttribute("data-theme");
-        const next = current === "dark" ? "light" : "dark";
-        document.documentElement.setAttribute("data-theme", next);
-        localStorage.setItem("site-theme", next);
-        updateThemeBtn(next);
+    // 主题切换列表
+    const themeSelect = document.getElementById("theme-select");
+    if (themeSelect) {
+        // 同步初始选择框状态
+        themeSelect.value = document.documentElement.getAttribute("data-theme") || "dark";
         
-        // 同步编辑器主题
-        if (commentEditor) commentEditor.setTheme(next === 'dark' ? 'dark' : 'ant-design');
-        if (reviewEditor) reviewEditor.setTheme(next === 'dark' ? 'dark' : 'ant-design');
-    });
+        themeSelect.addEventListener("change", (e) => {
+            const next = e.target.value;
+            document.documentElement.setAttribute("data-theme", next);
+            localStorage.setItem("site-theme", next);
+            
+            // 同步编辑器主题
+            const editorTheme = (next === 'dark' || next === 'miku') ? 'dark' : 'ant-design';
+            if (commentEditor) commentEditor.setTheme(editorTheme);
+            if (reviewEditor) reviewEditor.setTheme(editorTheme);
+        });
+    }
 
     // 初始化 Vditor
     let commentEditor = null;

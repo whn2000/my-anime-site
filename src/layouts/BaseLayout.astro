@@ -7,7 +7,7 @@ export interface Props {
 }
 
 const { 
-    title = 'MyAnimeList - 追番记录', 
+    title = "FUXE's ANIME LIST - 追番记录", 
     description = '记录每一个心动的次元瞬间。在这里你可以探索高质量的番剧、查询 Bangumi 评分与获取详尽百科！' 
 } = Astro.props;
 ---
@@ -19,7 +19,7 @@ const {
     
     <!-- SEO Meta Tags -->
     <meta name="description" content={description} />
-    <meta name="keywords" content="动漫, 追番, Bangumi, 评分, MyAnimeList, 二次元的足迹" />
+    <meta name="keywords" content="动漫, 追番, Bangumi, 评分, FUXE's ANIME LIST, 二次元的足迹" />
     
     <!-- OpenGraph / Social Meta Tags -->
     <meta property="og:type" content="website" />
@@ -39,7 +39,7 @@ const {
     {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
-      "name": "我的次元日记",
+      "name": "FUXE的动画列表（FUXE's ANIME LIST）",
       "description": "记录每一个心动的追番瞬间。在这里你可以探索高质量的番剧、查询 Bangumi 评分与获取详尽百科！",
       "about": {
         "@type": "Thing",
@@ -117,6 +117,12 @@ const {
         right: -10%;
         background: radial-gradient(circle, #a29bfe, transparent);
         animation-delay: -10s;
+    }
+    :root[data-theme="miku"] .orb-1 {
+        background: radial-gradient(circle, #39c5bb, transparent);
+    }
+    :root[data-theme="miku"] .orb-2 {
+        background: radial-gradient(circle, #81ecec, transparent);
     }
     .noise-overlay {
         position: absolute;

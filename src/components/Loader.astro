@@ -30,7 +30,10 @@
   <!-- 文字 -->
   <div class="loader-content">
     <div class="loader-title-wrap">
-      <span class="loader-title" id="loader-title">我的次元日记 🌸</span>
+      <span class="loader-title" id="loader-title">
+        <span class="loader-main-title">FUXE的动画列表</span>
+        <span class="loader-sub-title">FUXE's ANIME LIST</span>
+      </span>
     </div>
     <div class="loader-sub" id="loader-sub">Loading</div>
   </div>
@@ -60,6 +63,13 @@
     --loader-accent: #f57cac;
     --loader-line: rgba(0,0,0,0.06);
     --loader-text: #2d3436;
+  }
+
+  :root[data-theme="miku"] .loader {
+    --loader-bg: #39c5bb;
+    --loader-accent: #0c2d2a;
+    --loader-line: rgba(12, 45, 42, 0.1);
+    --loader-text: #0c2d2a;
   }
 
   /* === Triangle halves (Valentin Cheval style) === */
@@ -122,14 +132,25 @@
     display: inline-block;
   }
   .loader-title {
-    display: block;
-    font-family: 'Plus Jakarta Sans', 'Noto Sans SC', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    font-family: 'Noto Sans SC', sans-serif;
     font-size: clamp(1.6rem, 4vw, 3rem);
     font-weight: 800;
     color: var(--loader-text);
     letter-spacing: -0.5px;
     transform: translateY(110%);
     transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .loader-sub-title {
+    font-family: 'Plus Jakarta Sans', sans-serif;
+    font-size: clamp(0.9rem, 2.2vw, 1.3rem);
+    font-weight: 700;
+    color: var(--loader-accent);
+    letter-spacing: 2px;
+    text-transform: uppercase;
   }
   .loader-title.visible {
     transform: translateY(0);

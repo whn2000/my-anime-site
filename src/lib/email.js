@@ -47,8 +47,8 @@ export function buildVerificationEmailHtml(code, purposeLabel) {
   return `
     <div style="max-width:480px; margin:0 auto; padding:30px; background:#fff; border-radius:16px; font-family:sans-serif;">
       <div style="text-align:center; margin-bottom:24px;">
-        <span style="font-size:40px;">🌸</span>
-        <h2 style="margin:8px 0; color:#2d3436;">我的次元日记</h2>
+        <span style="font-size:40px;">✨</span>
+        <h2 style="margin:8px 0; color:#2d3436;">FUXE的动画列表（FUXE's ANIME LIST）</h2>
       </div>
       <p style="color:#636e72; font-size:16px; line-height:1.6;">
         你好！你正在 <strong>${purposeLabel}</strong>，请使用以下验证码：
@@ -63,7 +63,7 @@ export function buildVerificationEmailHtml(code, purposeLabel) {
       </p>
       <hr style="border:none; border-top:1px solid #eee; margin:24px 0;">
       <p style="color:#b2bec3; font-size:12px; text-align:center;">
-        🌸 我的次元日记 · 记录每一个心动的追番瞬间
+        ✨ FUXE的动画列表（FUXE's ANIME LIST） · 记录每一个心动的追番瞬间
       </p>
     </div>
   `;

@@ -81,7 +81,7 @@ export async function POST({ request }) {
     // 发送邮件
     const apiKey = env.RESEND_API_KEY; 
     const purposeLabel = PURPOSE_LABELS[purpose] || purpose;
-    const subject = `【我的次元日记】${purposeLabel}验证码`;
+    const subject = `【FUXE的动画列表（FUXE's ANIME LIST）】${purposeLabel}验证码`;
     const html = buildVerificationEmailHtml(code, purposeLabel);
     await sendEmail(apiKey, email, subject, html);
 
